@@ -129,6 +129,53 @@ function unwrap_const(ex::GiacExpr)
     return ex
 end
 
+"""
+    float(ex::GiacExpr)
+
+Convert a Giac number or array to a floating point data type.
+
+# Examples
+```jldoctest
+julia> using Giac
+
+julia> float(giac_eval("2"))
+2.0
+
+julia> float(giac_eval("2.34"))
+2.34
+
+julia> float(giac_eval("23456789012345678901"))
+2.3456789012345678901e+19
+
+julia> float(Giac.Commands.evalf(giac_eval("pi"), 100))
+3.141592653589793238462643383279502884197169399375105820974944592307816406286198
+
+julia> float(giac_eval("2 + 3i"))
+2.0 + 3.0im
+
+julia> float(giac_eval("1234567890/2345678901"))
+0.526315809667591
+
+julia> float(giac_eval("sin(2)"))
+0.9092974268256817
+"""
+function Base.float(ex::GiacExpr)
+    val = Giac.giac_type(ex)
+
+    val == INT && return convert(Float64, ex)
+    val == DOUBLE && return convert(Float64, ex)
+    val == ZINT && return parse(BigFloat, string(ex))
+    val == REAL && return parse(BigFloat, string(ex))
+    val == CPLX && return Complex(float(real(ex)), float(imag(ex)))
+    val == FRAC && return float(numer(ex)) / float(denom(ex))
+    val == FLOAT && return convert(Float64, ex)
+    val == VECT && return [float(x) for x in ex]
+    Giac.is_constant(ex) && return to_julia(Giac.Commands.evalf(ex, 16))
+
+    throw(ArgumentError("Can't convert expression to a floating point type"))
+end
+
+
 # ============================================================================
 # Scalar Conversion Helpers
 # ============================================================================
