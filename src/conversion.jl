@@ -158,6 +158,7 @@ julia> float(giac_eval("1234567890/2345678901"))
 
 julia> float(giac_eval("sin(2)"))
 0.9092974268256817
+```
 """
 function Base.float(ex::GiacExpr)
     val = Giac.giac_type(ex)
