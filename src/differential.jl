@@ -1,0 +1,112 @@
+# Spec 068 — multivar D operator
+# Differential operator (canonical, SciML-style) — applies partial differentiation
+# to function-form expressions and to bare GiacExpr operands.
+
+"""
+    Differential(var::GiacExpr)
+    Differential(var::GiacExpr, order::Int)
+
+Canonical partial-differentiation operator, SciML/ModelingToolkit-style.
+
+`Differential(var)` captures a single differentiation variable; the resulting
+callable applies a first-order partial derivative to its operand. The two-argument
+form `Differential(var, n)` produces an operator that applies the `n`-th order
+partial derivative in one step — equivalent to applying `Differential(var)` `n`
+times — and matches Symbolics.jl's `Differential(x, n)` shape.
+
+# Two operand forms
+
+- **Function-form**: `Differential(x)(f)` for `@giac_var x y f(x,y)` returns a
+  `DerivativeExpr` representing `∂f/∂x`. Compose by chaining:
+  `Differential(y)(Differential(x)(f))` is `∂²f/∂x∂y`. The order-2 shape
+  `Differential(x, 2)(f)` produces the same result as
+  `Differential(x)(Differential(x)(f))` (steps collapse).
+- **Bare-expression**: `Differential(x)(x^2 + y*x)` returns a plain `GiacExpr`
+  (already simplified by GIAC) — `2*x + y` in this case. The order-2 shape
+  `Differential(x, 2)(x^3)` returns `6*x` (after simplification). Aligns with
+  SymPy.jl's `diff(expr, var)` and Symbolics.jl's `Differential`.
+
+# Composition
+
+Repeated application on the same variable collapses adjacent steps:
+`Differential(x)(Differential(x)(f))` stores `[("x", 2)]` rather than
+`[("x", 1), ("x", 1)]`. Mixed variables compose freely:
+`Differential(y)(Differential(x)(f))` stores `[("x", 1), ("y", 1)]` and
+prints as `diff(diff(f(x,y),x),y)` for GIAC.
+
+# Examples
+
+```julia
+using Giac
+@giac_var x y t f(x, y) u(t)
+
+Differential(x)(f)              # ∂f/∂x
+Differential(y)(Differential(x)(f))  # ∂²f/∂x∂y
+
+Differential(t)(u)              # u'(t)  (mono-variable case)
+
+# Order-n shorthand (Symbolics.jl-style)
+Differential(t, 2)(u)           # u''(t)  — same as Differential(t)(Differential(t)(u))
+Differential(x, 3)(f)           # ∂³f/∂x³
+
+Differential(x)(x^2 + y*x)      # 2*x + y  (bare expression)
+Differential(x, 2)(x^3)         # 6*x      (bare expression, second derivative)
+```
+
+# Name collision with Symbolics.jl
+
+`Symbolics.Differential` exists too. When both packages are loaded, qualify:
+`Giac.Differential(x)(f)` vs `Symbolics.Differential(x)`. The two are
+independent types — there is no implicit interop in this release. See
+`docs/migration/d_to_differential.md` for the recipe.
+
+# See also
+- [`D`](@ref): Deprecated mono-variable operator. `D` is being removed in the
+  next published release; migrate `D(u) → Differential(t)(u)`.
+- [`DerivativeExpr`](@ref): The function-form result type.
+"""
+struct Differential
+    var::GiacExpr
+    order::Int
+
+    function Differential(var::GiacExpr, order::Int = 1)
+        order >= 1 || throw(ArgumentError("Differential order must be ≥ 1, got: $order"))
+        return new(var, order)
+    end
+end
+
+function Base.show(io::IO, D::Differential)
+    if D.order == 1
+        print(io, "Differential(", D.var, ")")
+    else
+        print(io, "Differential(", D.var, ", ", D.order, ")")
+    end
+end
+
+# Application on a GiacExpr: dispatches between function-form (returns
+# DerivativeExpr) and bare-expression (returns plain GiacExpr via GIAC's diff).
+function (D::Differential)(operand::GiacExpr)
+    parsed = _parse_function_args(string(operand))
+    if parsed === nothing
+        # Bare-expression branch (spec 068 US4): delegate to GIAC's diff(expr, var, n).
+        # Returns a plain GiacExpr (already simplified by GIAC) — no DerivativeExpr
+        # wrapper because there is no function-name / multi-step accounting to track.
+        result = operand
+        for _ in 1:D.order
+            result = Commands.diff(result, D.var)
+        end
+        return result
+    end
+    funcname, _args = parsed
+    var_str = string(D.var)
+    return DerivativeExpr(operand, funcname, Tuple{String, Int}[(var_str, D.order)])
+end
+
+# Composition: append a step to an existing DerivativeExpr.
+# `Differential(x, n)(d)` adds an n-order step against `x` to d.steps,
+# collapsing if the previous step is on the same variable.
+function (D::Differential)(d::DerivativeExpr)
+    var_str = string(D.var)
+    new_steps = _append_step(d.steps, (var_str, D.order))
+    return DerivativeExpr(d.base_expr, d.funcname, new_steps)
+end

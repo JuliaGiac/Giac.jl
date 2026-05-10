@@ -69,6 +69,39 @@ diff(x^2 * y^3, y)
 # Output: 3*x^2*y^2
 ```
 
+### Using the `Differential` operator
+
+Beyond the function-form `Giac.Commands.diff`, Giac.jl also exposes a SciML/ModelingToolkit-style operator: `Differential(var)` is a callable that captures a single differentiation variable and applies partial differentiation to its operand. This pairs naturally with declared functions (`@giac_var f(x, y)`) and with bare symbolic expressions.
+
+```julia
+using Giac
+
+@giac_var x y t f(x, y) u(t)
+
+# Bare-expression form (matches SymPy.jl `diff(expr, var)`)
+Differential(x)(x^2 + y*x)        # Returns: 2*x + y
+Differential(x)(sin(x) * exp(x))   # Returns: cos(x)*exp(x) + sin(x)*exp(x)
+
+# Function-form: declared function, returns a DerivativeExpr
+Dx = Differential(x)
+Dy = Differential(y)
+Dx(f)               # ∂f/∂x
+Dy(Dx(f))           # ∂²f/∂x∂y  (cross partial)
+Dx(Dx(f))           # ∂²f/∂x²   (adjacent same-var steps collapse)
+
+# Mono-variable functions work the same way
+Dt = Differential(t)
+Dt(u)               # u'(t)
+Dt(Dt(u))           # u''(t)
+
+# Two-argument shorthand for n-th order (matches Symbolics.jl's Differential(x, 2))
+Differential(x, 3)(f)             # ∂³f/∂x³  — same as Dx(Dx(Dx(f)))
+Differential(t, 2)(u)             # u''(t)   — same as Dt(Dt(u))
+Differential(x, 2)(x^3)           # 6*x      — bare-expression second derivative
+```
+
+The function-form path returns a `DerivativeExpr` that records the differentiation history as an ordered sequence of `(variable, order)` steps. The bare-expression path returns a plain `GiacExpr` (already simplified by GIAC). For high-order derivatives (`n ≥ 4`), the human-readable display switches from primes to math-convention parenthesized superscripts: `D(u, 5)` shows as `u⁽⁵⁾(t)` rather than `u'''''(t)`. See [Differential Equations](differential_equations.md) for ODE/PDE workflows and [the migration guide](../migration/d_to_differential.md) for porting from the deprecated `D` operator.
+
 ## Integration
 
 ### Indefinite Integrals

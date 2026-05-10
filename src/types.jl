@@ -333,40 +333,85 @@ GiacExpr: y+2*x
 # Derivative Operator D (035-derivative-operator)
 # ============================================================================
 
+# Names treated as GIAC operations rather than user-declared functions.
+# Shared between _parse_function_args and _parse_function_expr.
+const _GIAC_OPERATIONS = Set([
+    "diff", "integrate", "limit", "sum", "product",
+    "solve", "desolve", "simplify", "factor", "expand",
+    "sin", "cos", "tan", "exp", "log", "sqrt", "abs",
+])
+
 """
-    _parse_function_expr(expr_str::String) -> Union{Tuple{String, String}, Nothing}
+    _parse_function_args(expr_str::String) -> Union{Tuple{String, Vector{String}}, Nothing}
 
-Parse a function expression to extract the function name and first variable.
+Parse a function expression to extract the function name and the full list
+of arguments. Strict generalization of [`_parse_function_expr`](@ref).
 
-For expressions like "u(t)" returns ("u", "t").
-For expressions like "f(x,y)" returns ("f", "x").
-For non-function expressions, returns nothing.
+Returns `nothing` for non-function expressions (bare symbols, composite
+expressions, GIAC built-ins from `_GIAC_OPERATIONS`).
 
 # Examples
 ```julia
-_parse_function_expr("u(t)")     # ("u", "t")
-_parse_function_expr("f(x,y)")   # ("f", "x")
-_parse_function_expr("x")        # nothing
+_parse_function_args("u(t)")     # ("u", ["t"])
+_parse_function_args("f(x,y)")   # ("f", ["x", "y"])
+_parse_function_args("g(a, b, c)") # ("g", ["a", "b", "c"])
+_parse_function_args("x")        # nothing
+_parse_function_args("sin(x)")   # nothing  (GIAC operation)
 ```
 """
-function _parse_function_expr(expr_str::String)
+function _parse_function_args(expr_str::String)
     # \p{L}/\p{N}: GIAC accepts Unicode identifiers (ϕ, 𝑧, α, …);
     # ASCII-only [a-zA-Z] would reject them.
     m = match(r"^([\p{L}_][\p{L}\p{N}_]*)\(([^)]+)\)$", expr_str)
     if m !== nothing
         funcname = m.captures[1]
         args_str = m.captures[2]
-        # Get first variable (strip whitespace)
-        varname = strip(split(args_str, ",")[1])
-        # Exclude GIAC operations
-        giac_operations = Set(["diff", "integrate", "limit", "sum", "product",
-                               "solve", "desolve", "simplify", "factor", "expand",
-                               "sin", "cos", "tan", "exp", "log", "sqrt", "abs"])
-        if funcname ∉ giac_operations
-            return (funcname, String(varname))
+        if funcname ∉ _GIAC_OPERATIONS
+            args = String.(strip.(split(args_str, ",")))
+            return (funcname, args)
         end
     end
     return nothing
+end
+
+"""
+    _parse_function_expr(expr_str::String) -> Union{Tuple{String, String}, Nothing}
+
+Parse a function expression to extract the function name and first variable.
+Thin wrapper around [`_parse_function_args`](@ref) that projects to the first
+argument — preserved for backward compatibility with call sites that only
+need the first variable.
+
+For expressions like "u(t)" returns ("u", "t").
+For expressions like "f(x,y)" returns ("f", "x").
+For non-function expressions, returns nothing.
+"""
+function _parse_function_expr(expr_str::String)
+    parsed = _parse_function_args(expr_str)
+    parsed === nothing && return nothing
+    funcname, args = parsed
+    return (funcname, args[1])
+end
+
+"""
+    _append_step(steps, step) -> Vector{Tuple{String, Int}}
+
+Append a `(var, order)` differentiation step to a `Vector{Tuple{String, Int}}`,
+collapsing the new step into the previous one when they share a variable.
+
+Used by both `D(::DerivativeExpr, ...)` and `Differential` composition to keep
+multi-step differentiation history minimal: `[(x, 1)]` + `(x, 1)` → `[(x, 2)]`.
+Non-adjacent same-variable steps are deliberately *not* collapsed — Schwarz/
+Clairaut commutativity is a math property, but the steps vector records what
+the user wrote, in order.
+"""
+function _append_step(steps::Vector{Tuple{String, Int}}, step::Tuple{String, Int})
+    if !isempty(steps) && last(steps)[1] == step[1]
+        last_var, last_n = last(steps)
+        return Tuple{String, Int}[steps[1:end-1]..., (last_var, last_n + step[2])]
+    else
+        return Tuple{String, Int}[steps..., step]
+    end
 end
 
 """
@@ -409,8 +454,7 @@ ode = D(D(u)) + u ~ 0   # Equivalent to diff(u,t,2) + u = 0
 struct DerivativeExpr
     base_expr::GiacExpr
     funcname::String
-    varname::String
-    order::Int
+    steps::Vector{Tuple{String, Int}}
 end
 
 """
@@ -461,49 +505,185 @@ desolve([ode, y(0) ~ 1, D(y)(0) ~ 1, D(y,2)(0) ~ 1], t, y)
 - `desolve`: Solving differential equations (via `Giac.Commands`)
 """
 function D(expr::GiacExpr)
-    parsed = _parse_function_expr(string(expr))
+    parsed = _parse_function_args(string(expr))
     if parsed === nothing
         throw(ArgumentError("D() requires a function expression like u(t), got: $(string(expr))"))
     end
-    funcname, varname = parsed
-    return DerivativeExpr(expr, funcname, varname, 1)
+    funcname, args = parsed
+    if length(args) >= 2
+        # Multi-arg ambiguity guard — raises, does NOT depwarn (the error itself
+        # carries the deprecation note).
+        throw(ArgumentError(
+            "$funcname has multiple arguments (" * join(args, ", ") *
+            "); specify which variable to differentiate with respect to. " *
+            "Use the canonical form: Differential(" * args[1] * ")(" * funcname *
+            ") or Differential(" * args[2] * ")(" * funcname *
+            "). Note: D is deprecated and will be removed in the next published release."
+        ))
+    end
+    Base.depwarn(
+        "D($funcname) is deprecated; use Differential($(args[1]))($funcname) instead. " *
+        "D will be removed in the next published release.",
+        :D,
+    )
+    return DerivativeExpr(expr, funcname, Tuple{String, Int}[(args[1], 1)])
 end
 
 function D(expr::GiacExpr, n::Int)
     if n < 1
         throw(ArgumentError("Derivative order must be positive, got: $n"))
     end
-    parsed = _parse_function_expr(string(expr))
+    parsed = _parse_function_args(string(expr))
     if parsed === nothing
         throw(ArgumentError("D() requires a function expression like u(t), got: $(string(expr))"))
     end
-    funcname, varname = parsed
-    return DerivativeExpr(expr, funcname, varname, n)
+    funcname, args = parsed
+    if length(args) >= 2
+        throw(ArgumentError(
+            "$funcname has multiple arguments (" * join(args, ", ") *
+            "); specify which variable to differentiate with respect to. " *
+            "Use the canonical form: Differential(" * args[1] * ")(" * funcname *
+            ") or Differential(" * args[2] * ")(" * funcname *
+            "). Note: D is deprecated and will be removed in the next published release."
+        ))
+    end
+    Base.depwarn(
+        "D($funcname, $n) is deprecated; use Differential($(args[1])) applied $n times to $funcname instead. " *
+        "D will be removed in the next published release.",
+        :D,
+    )
+    return DerivativeExpr(expr, funcname, Tuple{String, Int}[(args[1], n)])
 end
 
 function D(d::DerivativeExpr)
-    return DerivativeExpr(d.base_expr, d.funcname, d.varname, d.order + 1)
+    if length(d.steps) != 1
+        throw(ArgumentError(
+            "D(::DerivativeExpr) without a variable is only supported for mono-variable derivatives. " *
+            "Use Differential(var)(d) instead."
+        ))
+    end
+    Base.depwarn(
+        "D(::DerivativeExpr) is deprecated; use Differential(var)(d) instead. " *
+        "D will be removed in the next published release.",
+        :D,
+    )
+    var, n = d.steps[1]
+    return DerivativeExpr(d.base_expr, d.funcname, Tuple{String, Int}[(var, n + 1)])
 end
 
 function D(d::DerivativeExpr, n::Int)
     if n < 1
         throw(ArgumentError("Derivative order must be positive, got: $n"))
     end
-    return DerivativeExpr(d.base_expr, d.funcname, d.varname, d.order + n)
+    if length(d.steps) != 1
+        throw(ArgumentError(
+            "D(::DerivativeExpr, ::Int) without a variable is only supported for mono-variable derivatives. " *
+            "Use Differential(var)(d) instead."
+        ))
+    end
+    Base.depwarn(
+        "D(::DerivativeExpr, $n) is deprecated; use Differential(var) applied $n times to d instead. " *
+        "D will be removed in the next published release.",
+        :D,
+    )
+    var, k = d.steps[1]
+    return DerivativeExpr(d.base_expr, d.funcname, Tuple{String, Int}[(var, k + n)])
 end
 
-# String conversion - produces diff notation for use in equations
-function Base.string(d::DerivativeExpr)
-    if d.order == 1
-        return "diff($(string(d.base_expr)),$(d.varname))"
+# spec 068 US5 — transitional D(f, x) alias overloads
+# Each emits a depwarn pointing to Differential and delegates. Note: the
+# Differential type is defined later in src/differential.jl, but these
+# function bodies resolve `Differential` at call time, so forward reference
+# is fine.
+
+function D(expr::GiacExpr, var::GiacExpr)
+    Base.depwarn(
+        "D(expr, var) is deprecated; use Differential($(string(var)))(expr) instead. " *
+        "D will be removed in the next published release.",
+        :D,
+    )
+    return Differential(var)(expr)
+end
+
+function D(expr::GiacExpr, var::GiacExpr, n::Int)
+    if n < 1
+        throw(ArgumentError("Derivative order must be positive, got: $n"))
+    end
+    Base.depwarn(
+        "D(expr, var, $n) is deprecated; use Differential($(string(var))) applied $n times to expr instead. " *
+        "D will be removed in the next published release.",
+        :D,
+    )
+    parsed = _parse_function_args(string(expr))
+    if parsed === nothing
+        throw(ArgumentError("D(expr, var, n) requires a function expression like u(t), got: $(string(expr))"))
+    end
+    funcname, _args = parsed
+    return DerivativeExpr(expr, funcname, Tuple{String, Int}[(string(var), n)])
+end
+
+function D(d::DerivativeExpr, var::GiacExpr)
+    Base.depwarn(
+        "D(::DerivativeExpr, var) is deprecated; use Differential($(string(var)))(d) instead. " *
+        "D will be removed in the next published release.",
+        :D,
+    )
+    return Differential(var)(d)
+end
+
+# Helper for ∂-style display: superscript a non-negative integer (e.g. 12 → "¹²").
+function _superscript_int(n::Int)
+    digits_map = Dict('0'=>'⁰','1'=>'¹','2'=>'²','3'=>'³','4'=>'⁴','5'=>'⁵',
+                      '6'=>'⁶','7'=>'⁷','8'=>'⁸','9'=>'⁹')
+    return join(digits_map[c] for c in string(n))
+end
+
+# Math-convention threshold: primes for n ≤ 3, parenthesized superscript ⁽ⁿ⁾ for n ≥ 4.
+# Spec 068 — keeps the familiar u', u'', u''' for everyday ODE work and switches
+# to u⁽⁴⁾(t), u⁽⁵⁾(t), … for higher orders.
+const _PRIMES_MAX = 3
+
+# Render a derivative-order suffix on a function name in "show" output.
+# n=1 → "'", n=2 → "''", n=3 → "'''", n=4 → "⁽⁴⁾", n=12 → "⁽¹²⁾", etc.
+function _derivative_order_suffix(n::Int)
+    if n <= _PRIMES_MAX
+        return repeat("'", n)
     else
-        return "diff($(string(d.base_expr)),$(d.varname),$(d.order))"
+        return "⁽" * _superscript_int(n) * "⁾"
     end
 end
 
+# String conversion - produces diff notation for use in equations.
+# Mono-step or all-same-variable: emit a single diff(expr, var, n) call.
+# Otherwise: emit nested diff(...) calls in the order steps were applied.
+function Base.string(d::DerivativeExpr)
+    base_str = string(d.base_expr)
+    if length(d.steps) == 1
+        var, n = d.steps[1]
+        return n == 1 ? "diff($base_str,$var)" : "diff($base_str,$var,$n)"
+    end
+    s = base_str
+    for (var, n) in d.steps
+        s = n == 1 ? "diff($s,$var)" : "diff($s,$var,$n)"
+    end
+    return s
+end
+
 function Base.show(io::IO, d::DerivativeExpr)
-    primes = repeat("'", d.order)
-    print(io, "D: ", d.funcname, primes, "(", d.varname, ")")
+    if length(d.steps) == 1
+        var, n = d.steps[1]
+        suffix = _derivative_order_suffix(n)
+        print(io, "D: ", d.funcname, suffix, "(", var, ")")
+    else
+        total = sum(n for (_, n) in d.steps)
+        ord_sup = total == 1 ? "" : _superscript_int(total)
+        denom = IOBuffer()
+        for (var, n) in d.steps
+            print(denom, "∂", var)
+            n == 1 || print(denom, _superscript_int(n))
+        end
+        print(io, "D: ∂", ord_sup, d.funcname, "/", String(take!(denom)))
+    end
 end
 
 # ============================================================================
@@ -538,12 +718,17 @@ struct DerivativePoint
 end
 
 function Base.string(dp::DerivativePoint)
+    # GIAC parses prime notation for derivative initial conditions (e.g. u'(0)=1).
+    # We keep `'`-style here regardless of order so the string is GIAC-consumable;
+    # the human-readable display falls through to `Base.show` below, which uses
+    # the math-convention u⁽ⁿ⁾ form for n ≥ 4.
     primes = repeat("'", dp.order)
     return dp.funcname * primes * "(" * join(dp.point_args, ",") * ")"
 end
 
 function Base.show(io::IO, dp::DerivativePoint)
-    print(io, string(dp))
+    suffix = _derivative_order_suffix(dp.order)
+    print(io, dp.funcname, suffix, "(", join(dp.point_args, ","), ")")
 end
 
 # Callable - produces DerivativePoint for initial conditions
@@ -564,8 +749,15 @@ D(u, 2)(0) ~ 0    # Creates GiacExpr: "u''(0)=0"
 ```
 """
 function (d::DerivativeExpr)(args...)
+    if length(d.steps) >= 2
+        throw(ArgumentError(
+            "Point evaluation is not supported for partial derivatives in this release. " *
+            "See spec 068 Open Questions for the planned PDE-initial-condition path."
+        ))
+    end
+    _, n = d.steps[1]
     arg_strs = [_arg_to_giac_string(arg) for arg in args]
-    return DerivativePoint(d.funcname, d.order, arg_strs)
+    return DerivativePoint(d.funcname, n, arg_strs)
 end
 
 """

@@ -77,6 +77,9 @@ include("tables.jl")
 include("substitute.jl")
 include("build_function.jl")
 
+# Differential operator (068-multivar-d-operator)
+include("differential.jl")
+
 # GenTypes module - Scoped enum for GIAC types (041-scoped-type-enum)
 include("gen_types.jl")
 
@@ -99,7 +102,9 @@ include("Constants.jl")
 export GiacExpr, GiacContext, GiacMatrix, GiacError, HelpResult, GiacInput
 
 # Derivative operator (035-derivative-operator)
-export D, DerivativeExpr, DerivativePoint, DerivativeCondition
+# Differential is the canonical SciML-style form (068-multivar-d-operator).
+# D is retained as a deprecated alias and will be removed in the next published release.
+export D, Differential, DerivativeExpr, DerivativePoint, DerivativeCondition
 
 # Core functions
 export giac_eval, to_julia, list_commands, help_count

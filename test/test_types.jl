@@ -308,6 +308,26 @@
             @test Giac._parse_function_expr("ψ(t)") == ("ψ", "t")
             @test Giac._parse_function_expr("α(β,γ)") == ("α", "β")
         end
+
+        # spec 068: _parse_function_args returns full argument list
+        @testset "_parse_function_args returns full arg list (068-multivar-d-operator)" begin
+            @test Giac._parse_function_args("u(t)") == ("u", ["t"])
+            @test Giac._parse_function_args("f(x,y)") == ("f", ["x", "y"])
+            @test Giac._parse_function_args("g(a, b, c)") == ("g", ["a", "b", "c"])
+            @test Giac._parse_function_args("h(  x  ,  y  )") == ("h", ["x", "y"])
+
+            # Non-function expressions
+            @test Giac._parse_function_args("x") === nothing
+            @test Giac._parse_function_args("a+b") === nothing
+
+            # GIAC operations are excluded
+            @test Giac._parse_function_args("diff(u,t)") === nothing
+            @test Giac._parse_function_args("sin(x)") === nothing
+
+            # Unicode identifiers
+            @test Giac._parse_function_args("ϕ(𝑧)") == ("ϕ", ["𝑧"])
+            @test Giac._parse_function_args("α(β,γ)") == ("α", ["β", "γ"])
+        end
     end
 
     @testset "Derivative Operator D - Unicode identifiers" begin
@@ -316,12 +336,11 @@
         @giac_var 𝑧 ϕ(𝑧)
         dϕ = D(ϕ)
         @test dϕ isa DerivativeExpr
-        @test dϕ.order == 1
+        @test dϕ.steps == [("𝑧", 1)]
         @test dϕ.funcname == "ϕ"
-        @test dϕ.varname == "𝑧"
 
         d2ϕ = D(ϕ, 2)
-        @test d2ϕ.order == 2
+        @test d2ϕ.steps == [("𝑧", 2)]
         @test d2ϕ.funcname == "ϕ"
     end
 
@@ -330,31 +349,30 @@
             @giac_var u(t)
             du = D(u)
             @test du isa DerivativeExpr
-            @test du.order == 1
+            @test du.steps == [("t", 1)]
             @test du.funcname == "u"
-            @test du.varname == "t"
         end
 
         @testset "D(u, 2) creates second derivative" begin
             @giac_var u(t)
             d2u = D(u, 2)
             @test d2u isa DerivativeExpr
-            @test d2u.order == 2
+            @test d2u.steps == [("t", 2)]
             @test d2u.funcname == "u"
         end
 
-        @testset "D(D(u)) creates second derivative" begin
+        @testset "D(D(u)) creates second derivative (steps collapsed)" begin
             @giac_var u(t)
             d2u = D(D(u))
             @test d2u isa DerivativeExpr
-            @test d2u.order == 2
+            @test d2u.steps == [("t", 2)]
         end
 
         @testset "D(u, 3) creates third derivative" begin
             @giac_var y(t)
             d3y = D(y, 3)
             @test d3y isa DerivativeExpr
-            @test d3y.order == 3
+            @test d3y.steps == [("t", 3)]
         end
 
         @testset "D on non-function raises error" begin
@@ -474,6 +492,230 @@
             io = IOBuffer()
             show(io, D(u, 2))
             @test String(take!(io)) == "D: u''(t)"
+        end
+
+        # spec 068 — n-th derivative notation: switch from primes to ⁽ⁿ⁾ for n ≥ 4
+        @testset "show method uses ⁽ⁿ⁾ for n ≥ 4 (068-multivar-d-operator)" begin
+            @giac_var u(t)
+
+            # Boundary: n = 3 still uses three primes
+            io = IOBuffer()
+            show(io, D(u, 3))
+            @test String(take!(io)) == "D: u'''(t)"
+
+            # Threshold: n = 4 switches to ⁽⁴⁾ notation
+            io = IOBuffer()
+            show(io, D(u, 4))
+            @test String(take!(io)) == "D: u⁽⁴⁾(t)"
+
+            # n = 5
+            io = IOBuffer()
+            show(io, D(u, 5))
+            @test String(take!(io)) == "D: u⁽⁵⁾(t)"
+
+            # Two-digit superscript
+            io = IOBuffer()
+            show(io, D(u, 12))
+            @test String(take!(io)) == "D: u⁽¹²⁾(t)"
+        end
+
+        # spec 068 — DerivativePoint also uses the math-convention notation in show,
+        # but Base.string keeps prime notation (GIAC consumes prime form).
+        @testset "DerivativePoint show vs string (068-multivar-d-operator)" begin
+            @giac_var u(t)
+
+            # n = 1 — show and string agree (single prime)
+            dp1 = D(u)(0)
+            @test string(dp1) == "u'(0)"
+            io = IOBuffer()
+            show(io, dp1)
+            @test String(take!(io)) == "u'(0)"
+
+            # n = 4 — show uses ⁽⁴⁾, string keeps primes (for GIAC)
+            dp4 = D(u, 4)(0)
+            @test string(dp4) == "u''''(0)"  # GIAC-consumable
+            io = IOBuffer()
+            show(io, dp4)
+            @test String(take!(io)) == "u⁽⁴⁾(0)"  # human-readable
+        end
+    end
+
+    # spec 068 US5 — transitional D(f, x) alias overloads
+    @testset "D transitional alias D(f, x) (068-multivar-d-operator US5)" begin
+        @giac_var x y f(x, y)
+        @giac_var t u(t)
+
+        # D(f, x) ≡ Differential(x)(f), with depwarn
+        d1 = D(f, x)
+        d2 = Differential(x)(f)
+        @test d1.steps == d2.steps
+        @test d1.funcname == d2.funcname
+
+        # D(f, x, 2) ≡ Differential(x)(Differential(x)(f))
+        d3 = D(f, x, 2)
+        d4 = Differential(x)(Differential(x)(f))
+        @test d3.steps == d4.steps
+
+        # D(D(f, x), y) ≡ Differential(y)(Differential(x)(f))
+        d5 = D(D(f, x), y)
+        d6 = Differential(y)(Differential(x)(f))
+        @test d5.steps == d6.steps
+
+        # D(u, t) ≡ Differential(t)(u)
+        d7 = D(u, t)
+        d8 = Differential(t)(u)
+        @test d7.steps == d8.steps
+
+        # D(u, t, 3) ≡ third-order derivative
+        d9 = D(u, t, 3)
+        @test d9.steps == [("t", 3)]
+
+        # Each transitional alias emits a depwarn (shape check on D(f, x))
+        @test_logs (:warn, r"D\(expr, var\) is deprecated.*Differential") match_mode=:any D(f, x)
+    end
+
+    # spec 068 US3 — D deprecation warnings + value-equivalence with Differential
+    @testset "D deprecation (068-multivar-d-operator US3)" begin
+        @giac_var t u(t)
+
+        @testset "D(u) emits depwarn pointing to Differential(t)(u)" begin
+            # @test_logs captures logs (including Base.depwarn) regardless of --depwarn flag.
+            @test_logs (:warn, r"D\(u\) is deprecated.*Differential\(t\)\(u\)") match_mode=:any D(u)
+        end
+
+        @testset "D(u, 2) emits depwarn referencing Differential" begin
+            @test_logs (:warn, r"D\(u, 2\) is deprecated.*Differential\(t\)") match_mode=:any D(u, 2)
+        end
+
+        @testset "D(D(u)) emits depwarn on the chained call" begin
+            @test_logs (:warn, r"deprecated") match_mode=:any D(D(u))
+        end
+
+        @testset "deprecated D produces same value as canonical Differential" begin
+            # Result equality bypasses depwarn-shape checks: just compare structures.
+            d_via_D = D(u)
+            d_via_Differential = Differential(t)(u)
+            @test d_via_D.steps == d_via_Differential.steps
+            @test d_via_D.funcname == d_via_Differential.funcname
+
+            d2_via_D = D(u, 2)
+            d2_via_Differential = Differential(t)(Differential(t)(u))
+            @test d2_via_D.steps == d2_via_Differential.steps
+
+            d2_chain_D = D(D(u))
+            @test d2_chain_D.steps == d2_via_Differential.steps
+        end
+
+        @testset "warn-once-per-callsite (Base.depwarn dedupe)" begin
+            # Base.depwarn deduplicates by (funcsym, file, line). Two calls from
+            # the same Julia line produce only one warning per session. We rely on
+            # Julia's documented Base.depwarn behavior; this test simply asserts
+            # that repeated D calls at the same site return correct values without
+            # error (warning emission shape covered by other tests above).
+            f() = (D(u); D(u))
+            d1, d2 = f(), f()
+            @test d1 isa DerivativeExpr
+            @test d2 isa DerivativeExpr
+            @test d1.steps == d2.steps == [("t", 1)]
+        end
+    end
+
+    # spec 068 US2 — multi-arg D(f) ambiguity guard
+    @testset "D(f) ambiguity guard on multi-arg function (068-multivar-d-operator US2)" begin
+        @giac_var x y f(x, y)
+        # D(f) on multi-arg function must raise ArgumentError, not silently differentiate.
+        err = nothing
+        try
+            D(f)
+        catch e
+            err = e
+        end
+        @test err isa ArgumentError
+        msg = err.msg
+        @test occursin("f", msg)
+        @test occursin("x", msg)
+        @test occursin("y", msg)
+        @test occursin("Differential(x)(f)", msg)
+        @test occursin("deprecated", msg)
+
+        # D(f, n) on multi-arg also raises with the same shape
+        err2 = nothing
+        try
+            D(f, 2)
+        catch e
+            err2 = e
+        end
+        @test err2 isa ArgumentError
+        @test occursin("multiple arguments", err2.msg)
+        @test occursin("Differential", err2.msg)
+
+        # Three-variable case
+        @giac_var a b c g(a, b, c)
+        err3 = nothing
+        try
+            D(g)
+        catch e
+            err3 = e
+        end
+        @test err3 isa ArgumentError
+        msg3 = err3.msg
+        @test occursin("g", msg3)
+        @test occursin("a", msg3)
+        @test occursin("b", msg3)
+        @test occursin("c", msg3)
+
+        # Mono-var D(u) still succeeds (regression guard)
+        @giac_var u(t)
+        @test D(u) isa DerivativeExpr
+    end
+
+    # spec 068 — foundational refactor of DerivativeExpr (multi-step)
+    @testset "DerivativeExpr multi-step (068-multivar-d-operator)" begin
+        @giac_var x y f(x, y)
+
+        @testset "manual multi-step construction → string is nested diff" begin
+            d_xy = DerivativeExpr(f, "f", Tuple{String, Int}[("x", 1), ("y", 1)])
+            @test string(d_xy) == "diff(diff(f(x,y),x),y)"
+
+            d_x2y = DerivativeExpr(f, "f", Tuple{String, Int}[("x", 2), ("y", 1)])
+            @test string(d_x2y) == "diff(diff(f(x,y),x,2),y)"
+        end
+
+        @testset "mono-step DerivativeExpr keeps single diff form" begin
+            @giac_var u(t)
+            @test string(D(u)) == "diff(u(t),t)"
+            @test string(D(u, 2)) == "diff(u(t),t,2)"
+        end
+
+        @testset "multi-step show uses ∂-style notation" begin
+            d_xy = DerivativeExpr(f, "f", Tuple{String, Int}[("x", 1), ("y", 1)])
+            io = IOBuffer()
+            show(io, d_xy)
+            @test String(take!(io)) == "D: ∂²f/∂x∂y"
+
+            d_x2y = DerivativeExpr(f, "f", Tuple{String, Int}[("x", 2), ("y", 1)])
+            io = IOBuffer()
+            show(io, d_x2y)
+            @test String(take!(io)) == "D: ∂³f/∂x²∂y"
+        end
+
+        @testset "(d::DerivativeExpr)(args...) raises on multi-step" begin
+            d_xy = DerivativeExpr(f, "f", Tuple{String, Int}[("x", 1), ("y", 1)])
+            @test_throws ArgumentError d_xy(0, 0)
+        end
+
+        @testset "D(::DerivativeExpr) raises on multi-step" begin
+            d_xy = DerivativeExpr(f, "f", Tuple{String, Int}[("x", 1), ("y", 1)])
+            @test_throws ArgumentError D(d_xy)
+            @test_throws ArgumentError D(d_xy, 2)
+        end
+
+        @testset "_to_giac_expr on mono-step still works (arithmetic surface)" begin
+            @giac_var u(t)
+            # If this round-trips through giac_eval correctly, arithmetic ops keep working.
+            result = D(u) + u
+            @test result isa GiacExpr
+            @test occursin("diff", string(result))
         end
     end
 end
