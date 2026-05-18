@@ -677,8 +677,11 @@ function Base.show(io::IO, d::DerivativeExpr)
     else
         total = sum(n for (_, n) in d.steps)
         ord_sup = total == 1 ? "" : _superscript_int(total)
+        # Right-to-left Leibniz convention: ∂ⁿf/∂v₁…∂vₙ reads with v₁
+        # last-applied (leftmost) and vₙ first-applied (rightmost). `d.steps`
+        # records innermost-first (application order), so reverse it.
         denom = IOBuffer()
-        for (var, n) in d.steps
+        for (var, n) in Iterators.reverse(d.steps)
             print(denom, "∂", var)
             n == 1 || print(denom, _superscript_int(n))
         end

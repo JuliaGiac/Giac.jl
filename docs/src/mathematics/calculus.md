@@ -86,7 +86,7 @@ Differential(x)(sin(x) * exp(x))   # Returns: cos(x)*exp(x) + sin(x)*exp(x)
 Dx = Differential(x)
 Dy = Differential(y)
 Dx(f)               # ∂f/∂x
-Dy(Dx(f))           # ∂²f/∂x∂y  (cross partial)
+Dy(Dx(f))           # ∂²f/∂y∂x  (cross partial — see "Notation" below)
 Dx(Dx(f))           # ∂²f/∂x²   (adjacent same-var steps collapse)
 
 # Mono-variable functions work the same way
@@ -100,7 +100,20 @@ Differential(t, 2)(u)             # u''(t)   — same as Dt(Dt(u))
 Differential(x, 2)(x^3)           # 6*x      — bare-expression second derivative
 ```
 
-The function-form path returns a `DerivativeExpr` that records the differentiation history as an ordered sequence of `(variable, order)` steps. The bare-expression path returns a plain `GiacExpr` (already simplified by GIAC). For high-order derivatives (`n ≥ 4`), the human-readable display switches from primes to math-convention parenthesized superscripts: `D(u, 5)` shows as `u⁽⁵⁾(t)` rather than `u'''''(t)`. See [Differential Equations](differential_equations.md) for ODE/PDE workflows and [the migration guide](../migration/d_to_differential.md) for porting from the deprecated `D` operator.
+#### Notation: right-to-left Leibniz convention
+
+In partial-derivative output (`Base.show` and the math comments above),
+Giac.jl uses the **right-to-left Leibniz convention**: in `∂ⁿf/∂v₁…∂vₙ`,
+the **rightmost** variable in the denominator is applied **first**, the
+**leftmost** last. This matches the operator product
+`(∂/∂v₁)·…·(∂/∂vₙ) f` read as a chain of left-multiplications:
+`Differential(y)(Differential(x)(f))` (apply `Differential(x)` first, then
+`Differential(y)`) is written `∂²f/∂y∂x` and pretty-prints as
+`D: ∂²f/∂y∂x`. By Schwarz/Clairaut the value is symmetric for
+sufficiently smooth `f`, but the notation, the `Base.show` output, and the
+internal `DerivativeExpr.steps` field track the order of application.
+
+The function-form path returns a `DerivativeExpr` that records the differentiation history as an ordered sequence of `(variable, order)` steps (innermost-first). The bare-expression path returns a plain `GiacExpr` (already simplified by GIAC). For high-order derivatives (`n ≥ 4`), the human-readable display switches from primes to math-convention parenthesized superscripts: `D(u, 5)` shows as `u⁽⁵⁾(t)` rather than `u'''''(t)`. See [Differential Equations](differential_equations.md) for ODE/PDE workflows and [the migration guide](../migration/d_to_differential.md) for porting from the deprecated `D` operator.
 
 ## Integration
 

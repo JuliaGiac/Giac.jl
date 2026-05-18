@@ -18,21 +18,32 @@ times — and matches Symbolics.jl's `Differential(x, n)` shape.
 
 - **Function-form**: `Differential(x)(f)` for `@giac_var x y f(x,y)` returns a
   `DerivativeExpr` representing `∂f/∂x`. Compose by chaining:
-  `Differential(y)(Differential(x)(f))` is `∂²f/∂x∂y`. The order-2 shape
-  `Differential(x, 2)(f)` produces the same result as
-  `Differential(x)(Differential(x)(f))` (steps collapse).
+  `Differential(y)(Differential(x)(f))` is `∂²f/∂y∂x` (see *Notation*
+  below). The order-2 shape `Differential(x, 2)(f)` produces the same result
+  as `Differential(x)(Differential(x)(f))` (steps collapse).
 - **Bare-expression**: `Differential(x)(x^2 + y*x)` returns a plain `GiacExpr`
   (already simplified by GIAC) — `2*x + y` in this case. The order-2 shape
   `Differential(x, 2)(x^3)` returns `6*x` (after simplification). Aligns with
   SymPy.jl's `diff(expr, var)` and Symbolics.jl's `Differential`.
+
+# Notation (right-to-left Leibniz)
+
+`Giac.jl` uses the right-to-left Leibniz convention for `∂ⁿf/∂v₁…∂vₙ`:
+the **rightmost** variable is applied **first**, the **leftmost** last —
+consistent with the operator product `(∂/∂v₁)·…·(∂/∂vₙ) f`. So
+`Differential(y)(Differential(x)(f))` (apply `Differential(x)` first, then
+`Differential(y)`) is written `∂²f/∂y∂x`, and pretty-printed as `D: ∂²f/∂y∂x`.
+By Schwarz/Clairaut the value is symmetric for sufficiently smooth `f`, but
+the notation, the `Base.show` output, and the `steps` field track the order
+of application.
 
 # Composition
 
 Repeated application on the same variable collapses adjacent steps:
 `Differential(x)(Differential(x)(f))` stores `[("x", 2)]` rather than
 `[("x", 1), ("x", 1)]`. Mixed variables compose freely:
-`Differential(y)(Differential(x)(f))` stores `[("x", 1), ("y", 1)]` and
-prints as `diff(diff(f(x,y),x),y)` for GIAC.
+`Differential(y)(Differential(x)(f))` stores `[("x", 1), ("y", 1)]`
+(innermost-first) and prints as `diff(diff(f(x,y),x),y)` for GIAC.
 
 # Examples
 
@@ -41,7 +52,7 @@ using Giac
 @giac_var x y t f(x, y) u(t)
 
 Differential(x)(f)              # ∂f/∂x
-Differential(y)(Differential(x)(f))  # ∂²f/∂x∂y
+Differential(y)(Differential(x)(f))  # ∂²f/∂y∂x  (x first, y next)
 
 Differential(t)(u)              # u'(t)  (mono-variable case)
 

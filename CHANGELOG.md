@@ -38,9 +38,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   partial-differentiation operator. `Differential(x)(f)` for a declared function
   `f(x, y)` returns a `DerivativeExpr` representing `∂f/∂x`. Composition handles
   cross and higher-order partials: `Differential(y)(Differential(x)(f))` is
-  `∂²f/∂x∂y`; `Differential(x)(Differential(x)(f))` is `∂²f/∂x²` (adjacent
-  same-variable steps collapse). Mono-variable functions also work:
-  `Differential(t)(u)`.
+  `∂²f/∂y∂x` (right-to-left Leibniz convention — see *Fixed* below);
+  `Differential(x)(Differential(x)(f))` is `∂²f/∂x²` (adjacent same-variable
+  steps collapse). Mono-variable functions also work: `Differential(t)(u)`.
 - **Two-argument `Differential(var, n)` shorthand**: `Differential(x, 2)(f)`
   is exactly equivalent to `Differential(x)(Differential(x)(f))`, matching
   Symbolics.jl's `Differential(x, 2)` form. The default `Differential(var)`
@@ -664,6 +664,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `latex(ifactor(360))` → `"5\cdot 2^{3}\cdot 3^{2}"`. Every other command
   keeps GIAC's normal evaluation semantics. Reported by
   [@kahliburke](https://github.com/kahliburke).
+
+### Fixed
+
+- **Partial-derivative pretty-print convention (right-to-left Leibniz)**: the
+  multi-step `Base.show` for `DerivativeExpr` previously printed
+  `Differential(y)(Differential(x)(f))` as `D: ∂²f/∂x∂y`, which is consistent
+  with the index/`f_{xy}` convention but inconsistent with the operator-product
+  reading `(∂/∂y)(∂/∂x)f = ∂²f/∂y∂x`. The display now uses the right-to-left
+  Leibniz convention — the **rightmost** variable in `∂ⁿf/∂v₁…∂vₙ` is applied
+  **first**, the leftmost last — so the same expression now prints as
+  `D: ∂²f/∂y∂x`. The `steps` field (innermost-first) and the GIAC-side
+  `diff(diff(f(x,y),x),y)` string are unchanged; only the human-facing
+  ∂-notation flips. By Schwarz/Clairaut the underlying value is symmetric
+  for sufficiently smooth functions, so this is purely a notation fix.
 
 ## [0.14.1] - 2026-05-11
 

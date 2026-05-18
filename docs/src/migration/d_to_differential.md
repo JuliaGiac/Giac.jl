@@ -20,7 +20,9 @@ Three reasons:
    `u(t)` — bare expressions raise an error. `Differential` matches what
    SymPy.jl's `diff(expr, var)` and Symbolics.jl's `Differential` already do.
 3. **Composition reads naturally**. `Differential(y)(Differential(x)(f))`
-   tracks the cross partial `∂²f/∂x∂y` exactly as written; mixed orders
+   tracks the cross partial `∂²f/∂y∂x` (right-to-left Leibniz convention:
+   the rightmost variable is applied first — `Differential(x)` is applied
+   before `Differential(y)`); mixed orders
    (`Differential(x)(Differential(y)(Differential(x)(f)))`) work the same way.
 
 ## Timeline
@@ -48,7 +50,7 @@ For multi-variable functions (`@giac_var x y f(x, y)`):
 | Was (silently broken or unsupported) | Now |
 |---|---|
 | `D(f)` (silently picked `x`!) | `Differential(x)(f)` (explicit) or `Differential(y)(f)` |
-| Not expressible directly with `D` | `Differential(y)(Differential(x)(f))` for `∂²f/∂x∂y` |
+| Not expressible directly with `D` | `Differential(y)(Differential(x)(f))` for `∂²f/∂y∂x` |
 | Not expressible directly with `D` | `Differential(x)(Differential(x)(f))` for `∂²f/∂x²` |
 | `D(f, x)` (transitional alias, deprecated) | `Differential(x)(f)` |
 | `D(f, x, 2)` (transitional alias, deprecated) | `Differential(x)(Differential(x)(f))` |

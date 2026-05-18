@@ -225,5 +225,34 @@ using Giac
         @test occursin("cos", string(result))
     end
 
+    # ------------------------------------------------------------------
+    # Symbolics parity (post-068 finishing touches)
+    # Convention: right-to-left Leibniz — in ∂ⁿf/∂v₁…∂vₙ the rightmost
+    # variable is applied first, the leftmost last. Consistent with
+    # operator product (∂/∂v₁)·…·(∂/∂vₙ) f.
+    # ------------------------------------------------------------------
+    @testset "right-to-left convention in ∂-style show" begin
+        @giac_var x y z f(x, y) g(x, y, z)
+
+        # Two-variable cross partial: Differential(y)(Differential(x)(f))
+        # applies x first then y. Right-to-left convention places y
+        # (last-applied) leftmost in the denominator.
+        d_yx = Differential(y)(Differential(x)(f))
+        io = IOBuffer(); show(io, d_yx)
+        @test String(take!(io)) == "D: ∂²f/∂y∂x"
+
+        # Three-variable composition: applied x, y, z → denom is ∂z∂y∂x
+        d_zyx = Differential(z)(Differential(y)(Differential(x)(g)))
+        io = IOBuffer(); show(io, d_zyx)
+        @test String(take!(io)) == "D: ∂³g/∂z∂y∂x"
+
+        # Higher order with two vars: steps = [("x", 2), ("y", 1)]
+        # applied x twice first, then y once → denom is ∂y∂x²
+        d_y_x2 = Differential(y)(Differential(x, 2)(f))
+        @test d_y_x2.steps == [("x", 2), ("y", 1)]
+        io = IOBuffer(); show(io, d_y_x2)
+        @test String(take!(io)) == "D: ∂³f/∂y∂x²"
+    end
+
 end
 

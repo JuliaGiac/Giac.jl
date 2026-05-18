@@ -687,16 +687,20 @@
             @test string(D(u, 2)) == "diff(u(t),t,2)"
         end
 
-        @testset "multi-step show uses ∂-style notation" begin
+        @testset "multi-step show uses ∂-style notation (right-to-left)" begin
+            # Convention: in ∂ⁿf/∂v₁…∂vₙ the rightmost variable is applied first,
+            # the leftmost last — consistent with the operator product
+            # (∂/∂v₁)·…·(∂/∂vₙ) f. Therefore `steps` (innermost-first) is
+            # reversed in the denominator.
             d_xy = DerivativeExpr(f, "f", Tuple{String, Int}[("x", 1), ("y", 1)])
             io = IOBuffer()
             show(io, d_xy)
-            @test String(take!(io)) == "D: ∂²f/∂x∂y"
+            @test String(take!(io)) == "D: ∂²f/∂y∂x"
 
             d_x2y = DerivativeExpr(f, "f", Tuple{String, Int}[("x", 2), ("y", 1)])
             io = IOBuffer()
             show(io, d_x2y)
-            @test String(take!(io)) == "D: ∂³f/∂x²∂y"
+            @test String(take!(io)) == "D: ∂³f/∂y∂x²"
         end
 
         @testset "(d::DerivativeExpr)(args...) raises on multi-step" begin
