@@ -106,6 +106,9 @@ export GiacExpr, GiacContext, GiacMatrix, GiacError, HelpResult, GiacInput
 # D is retained as a deprecated alias and will be removed in the next published release.
 export D, Differential, DerivativeExpr, DerivativePoint, DerivativeCondition
 
+# expand_derivatives — Symbolics.jl-compatible no-op / DerivativeExpr forcer.
+export expand_derivatives
+
 # Core functions
 export giac_eval, to_julia, list_commands, help_count
 

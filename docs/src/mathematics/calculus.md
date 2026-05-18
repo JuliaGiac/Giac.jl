@@ -98,6 +98,17 @@ Dt(Dt(u))           # u''(t)
 Differential(x, 3)(f)             # ∂³f/∂x³  — same as Dx(Dx(Dx(f)))
 Differential(t, 2)(u)             # u''(t)   — same as Dt(Dt(u))
 Differential(x, 2)(x^3)           # 6*x      — bare-expression second derivative
+
+# Symbolics-style algebraic surface
+Differential(t)^2                 # === Differential(t, 2)
+Differential(t)^0                 # === identity
+Differential(y) * Differential(x) # composition — same as Differential(y) ∘ Differential(x)
+(Differential(y) ∘ Differential(x))(f)  # ∂²f/∂y∂x
+
+# Force evaluation of a lazy DerivativeExpr (no-op on plain GiacExpr —
+# matches Symbolics.jl's expand_derivatives)
+expand_derivatives(Dx(f))         # → diff(f(x,y), x) as a GiacExpr
+expand_derivatives(x^2 + y*x)     # → x^2 + y*x  (identity)
 ```
 
 #### Notation: right-to-left Leibniz convention

@@ -254,5 +254,93 @@ using Giac
         @test String(take!(io)) == "D: ∂³f/∂y∂x²"
     end
 
+    @testset "Base.^(::Differential, ::Integer)" begin
+        @giac_var x t f(x) u(t)
+
+        # Differential(t)^2 ≡ Differential(t, 2): same effect on a function-form
+        Dt2_pow = Differential(t)^2
+        Dt2_ctor = Differential(t, 2)
+        @test Dt2_pow isa Differential
+        @test Dt2_pow.var === Dt2_ctor.var
+        @test Dt2_pow.order == Dt2_ctor.order == 2
+        @test Dt2_pow(u).steps == Dt2_ctor(u).steps == [("t", 2)]
+
+        # Higher exponent
+        @test (Differential(x)^3).order == 3
+        @test (Differential(x)^3)(f).steps == [("x", 3)]
+
+        # Composition: (Dx^2) * (Dx^1) chained as Dx^2 applied on a Dx step
+        # collapses thanks to _append_step, giving steps = [("x", 3)]
+        d = Differential(x)(f)
+        @test (Differential(x)^2)(d).steps == [("x", 3)]
+
+        # n == 0 returns identity (Symbolics convention)
+        @test Differential(t)^0 === identity
+        @test (Differential(t)^0)(u) === u
+
+        # n == 1 is a no-op on order
+        @test (Differential(t)^1).order == 1
+    end
+
+    @testset "Base.:*(::Differential, ::Differential) — composition" begin
+        @giac_var x y f(x, y)
+
+        # (Dy * Dx)(f) ≡ Dy(Dx(f))
+        composed = Differential(y) * Differential(x)
+        @test composed(f).steps == Differential(y)(Differential(x)(f)).steps ==
+              [("x", 1), ("y", 1)]
+
+        # Same variable: (Dx * Dx)(f) collapses to steps [("x", 2)]
+        @test (Differential(x) * Differential(x))(f).steps == [("x", 2)]
+    end
+
+    @testset "Base.∘(::Differential, ::Differential) — composition" begin
+        @giac_var x y f(x, y)
+
+        # (Dy ∘ Dx)(f) ≡ Dy(Dx(f))
+        composed = Differential(y) ∘ Differential(x)
+        @test composed(f).steps == [("x", 1), ("y", 1)]
+
+        # Mixing ∘ and * gives the same result
+        @test (Differential(y) ∘ Differential(x))(f).steps ==
+              (Differential(y) * Differential(x))(f).steps
+    end
+
+    @testset "expand_derivatives" begin
+        @giac_var x y t f(x, y) u(t)
+
+        # On a plain GiacExpr → identity (already eager-evaluated in Giac.jl)
+        e = x^2 + y * x
+        @test expand_derivatives(e) === e
+
+        # On the result of bare-expression Differential (already a GiacExpr) → identity
+        already = Differential(x)(x^2 + y * x)
+        @test already isa GiacExpr
+        @test expand_derivatives(already) === already
+
+        # On a DerivativeExpr (function-form, lazy) → returns a plain GiacExpr.
+        # GIAC may reformulate `diff(f(x,y),x)` internally as `diff(f,0)(x,y)`
+        # (its operator-then-evaluate normal form) — semantically equivalent
+        # but syntactically different — so we only assert the type and that
+        # GIAC's diff was actually called (output mentions `diff` and `f`).
+        lazy = Differential(x)(f)
+        @test lazy isa DerivativeExpr
+        evaluated = expand_derivatives(lazy)
+        @test evaluated isa GiacExpr
+        @test !(evaluated isa DerivativeExpr)
+        s = string(evaluated)
+        @test occursin("diff", s)
+        @test occursin("f", s)
+
+        # Differential(t, 2)(u) lazy → expand returns a GiacExpr referring to u
+        # (e.g. `diff(u(t),t,2)` or `diff(u,0,0)(t)` after GIAC normalization).
+        d2 = Differential(t, 2)(u)
+        @test d2 isa DerivativeExpr
+        ev2 = expand_derivatives(d2)
+        @test ev2 isa GiacExpr
+        @test occursin("diff", string(ev2))
+        @test occursin("u", string(ev2))
+    end
+
 end
 

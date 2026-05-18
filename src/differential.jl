@@ -45,6 +45,11 @@ Repeated application on the same variable collapses adjacent steps:
 `Differential(y)(Differential(x)(f))` stores `[("x", 1), ("y", 1)]`
 (innermost-first) and prints as `diff(diff(f(x,y),x),y)` for GIAC.
 
+The operators `^`, `*`, and `∘` are also supported for compact composition,
+matching Symbolics.jl: `Differential(t)^2 === Differential(t, 2)`,
+`Differential(y) * Differential(x) ≡ Differential(y) ∘ Differential(x)`, and
+`Differential(t)^0 === identity`.
+
 # Examples
 
 ```julia
@@ -121,3 +126,65 @@ function (D::Differential)(d::DerivativeExpr)
     new_steps = _append_step(d.steps, (var_str, D.order))
     return DerivativeExpr(d.base_expr, d.funcname, new_steps)
 end
+
+# Symbolics.jl-style algebraic surface on Differential operators.
+# `Differential(var)^n` yields the n-th order operator (n == 0 → identity, as
+# in Symbolics). Composition via `*` and `∘` (Julia's generic ∘ already does
+# the right thing on callables, but we add an explicit method so `*` can
+# delegate uniformly and dispatch is clear in stack traces).
+
+"""
+    Base.:^(D::Differential, n::Integer) -> Differential | typeof(identity)
+
+Return a `Differential` whose order is multiplied by `n`. Mirrors
+Symbolics.jl: `Differential(x)^n === Differential(x, D.order * n)` for `n ≥ 1`,
+and `Differential(x)^0 === identity` (the identity function).
+
+`n` must be non-negative. Negative powers are not defined (anti-derivative
+would require an explicit constant of integration).
+"""
+function Base.:^(D::Differential, n::Integer)
+    n >= 0 || throw(ArgumentError("Differential^n requires n ≥ 0, got: $n"))
+    n == 0 && return identity
+    return Differential(D.var, D.order * n)
+end
+
+"""
+    Base.:*(D1::Differential, D2::Differential) -> ComposedFunction
+
+Compose two `Differential` operators: `(D1 * D2)(f) == D1(D2(f))`. Mirrors
+Symbolics.jl's `Differential * Differential` and falls back to Julia's
+generic `ComposedFunction` so applying the result on a `GiacExpr` or
+`DerivativeExpr` reuses the existing `Differential` call-site logic
+(including same-variable step collapse).
+"""
+Base.:*(D1::Differential, D2::Differential) = D1 ∘ D2
+
+"""
+    expand_derivatives(x) -> x
+
+Force evaluation of any lazy derivative wrapper, returning a plain `GiacExpr`.
+
+For `Differential(var)(f)` where `f` is a declared user function (`DerivativeExpr`),
+`expand_derivatives` calls GIAC's `diff` and returns the resulting `GiacExpr`. For
+everything else (already a `GiacExpr` produced by Giac.jl's eager bare-expression
+branch, or any value not wrapped in `DerivativeExpr`), it is the identity — so
+code written in the Symbolics.jl style (`expand_derivatives(Differential(x)(expr))`)
+stays correct on Giac.jl without behavioral change.
+
+# Examples
+
+```julia
+@giac_var x y f(x, y)
+
+expand_derivatives(x^2 + y)            # identity → x^2+y
+expand_derivatives(Differential(x)(x^2))  # identity → 2*x (already a GiacExpr)
+expand_derivatives(Differential(x)(f))    # → diff(f(x,y),x) as a GiacExpr
+```
+
+# See also
+- [`Differential`](@ref): The operator producing lazy or eager derivatives.
+- [`DerivativeExpr`](@ref): The lazy function-form derivative wrapper.
+"""
+expand_derivatives(x) = x
+expand_derivatives(d::DerivativeExpr) = _to_giac_expr(d)

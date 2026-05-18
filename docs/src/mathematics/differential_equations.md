@@ -261,4 +261,5 @@ D
 DerivativeExpr
 DerivativePoint
 DerivativeCondition
+expand_derivatives
 ```

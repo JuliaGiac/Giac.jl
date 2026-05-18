@@ -41,6 +41,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `∂²f/∂y∂x` (right-to-left Leibniz convention — see *Fixed* below);
   `Differential(x)(Differential(x)(f))` is `∂²f/∂x²` (adjacent same-variable
   steps collapse). Mono-variable functions also work: `Differential(t)(u)`.
+- **Symbolics-compatible algebraic surface on `Differential`**:
+  `Differential(t)^n` for `n ≥ 0` returns an order-`n` operator —
+  `Differential(t)^2 === Differential(t, 2)` and `Differential(t)^0 === identity`,
+  matching Symbolics.jl. `Differential * Differential` composes via Julia's
+  generic `∘`, so `(Differential(y) * Differential(x))(f) ==
+  (Differential(y) ∘ Differential(x))(f) == Differential(y)(Differential(x)(f))`.
+- **`expand_derivatives`** (Symbolics.jl parity): forces evaluation of a
+  `DerivativeExpr` to a plain `GiacExpr` (delegates to GIAC's `diff`), and is
+  the identity on any other value. Lets code written in the Symbolics.jl style
+  (`expand_derivatives(Differential(x)(expr))`) run unchanged on Giac.jl. Note
+  that Giac.jl's bare-expression branch already evaluates eagerly, so the
+  no-op fallback covers the common case.
 - **Two-argument `Differential(var, n)` shorthand**: `Differential(x, 2)(f)`
   is exactly equivalent to `Differential(x)(Differential(x)(f))`, matching
   Symbolics.jl's `Differential(x, 2)` form. The default `Differential(var)`
