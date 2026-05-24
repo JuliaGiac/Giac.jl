@@ -158,21 +158,34 @@ julia> float(giac_eval("1234567890/2345678901"))
 
 julia> float(giac_eval("sin(2)"))
 0.9092974268256817
+
+julia> float(giac_eval("[1,2,3]"))
+3-element Vector{Float64}:
+ 1.0
+ 2.0
+ 3.0
 ```
 """
 function Base.float(ex::GiacExpr)
-    val = Giac.giac_type(ex)
+    T = Giac.giac_type(ex)
 
-    val == INT && return convert(Float64, ex)
-    val == DOUBLE && return convert(Float64, ex)
-    val == ZINT && return parse(BigFloat, string(ex))
-    val == REAL && return parse(BigFloat, string(ex))
-    val == CPLX && return Complex(float(real(ex)), float(imag(ex)))
-    val == FRAC && return float(numer(ex)) / float(denom(ex))
-    val == FLOAT && return convert(Float64, ex)
-    val == VECT && return [float(x) for x in ex]
-    Giac.is_constant(ex) && return to_julia(Giac.Commands.evalf(ex, 16))
-
+    if T ∈ (INT, DOUBLE, FLOAT)
+        return convert(Float64, _convert_by_type(ex, T))
+    elseif T ∈ (ZINT, REAL)
+        return convert(BigFloat, _convert_by_type(ex, T))
+    elseif T == CPLX
+        return Complex(float(real(ex)), float(imag(ex)))
+    elseif T == FRAC
+        return float(numer(ex)) / float(denom(ex))
+    elseif T == VECT
+        return [float(x) for x in ex]
+    elseif Constants.is_giac_constant(ex)
+        ex == Constants._pi[] && return float(π)
+        ex == Constants._e[] && return float(ℯ)
+        ex == Constants._i[] && return float(im)
+    elseif Giac.is_constant(ex)
+        return to_julia(Giac.Commands.evalf(ex, 16))
+    end
     throw(ArgumentError("Can't convert expression to a floating point type"))
 end
 
