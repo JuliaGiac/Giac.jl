@@ -171,8 +171,10 @@ function Base.float(ex::GiacExpr)
 
     if T ∈ (INT, DOUBLE, FLOAT)
         return convert(Float64, _convert_by_type(ex, T))
-    elseif T ∈ (ZINT, REAL)
+    elseif T ∈ (ZINT,)
         return convert(BigFloat, _convert_by_type(ex, T))
+    elseif T ∈ (REAL,)
+        return parse(BigFloat, string(ex))
     elseif T == CPLX
         return Complex(float(real(ex)), float(imag(ex)))
     elseif T == FRAC
