@@ -515,3 +515,15 @@ function Base.transpose(m::GiacMatrix)::GiacMatrix
         return GiacMatrix(ptr, m.cols, m.rows)
     end
 end
+
+"""
+    norm(m::Union{GiacExpr, Vector{GiacExpr}, p=2)::GiacExpr
+
+"""
+function LinearAlgebra.norm(m::Union{T, Vector{T}}, p::Real=2) where {T <: GiacExpr}
+    p == 1   && return invoke_cmd(:l1norm, m)
+    p == 2   && return invoke_cmd(:l2norm, m)
+    p == Inf && return invoke_cmd(:maxnorm, m)
+    p > 0 || throw(ArgumentError("p not positive"))
+    return sum(xᵢ^p for xᵢ ∈ m)^(1/p)
+end

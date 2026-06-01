@@ -84,6 +84,26 @@
                 d = det(A)
                 @test d isa GiacExpr
             end
+
+            @testset "norm of matrix" begin
+                M = [1 2; 3 4]
+                A = GiacMatrix(M)
+                for p ∈ (1,2,3Inf)
+                    @test norm(M,p) == norm(A,p)
+                end
+            end
+
+            @testset "norm of GiacExpr" begin
+                m = [1 2 3]
+                a = Giac.Commands.list(m)
+                for p ∈ (1,2,3Inf)
+                    @test norm(m,p) == norm(a,p)
+                end
+
+                @giac_var x
+                @test norm(x) == abs(x)
+                @test norm([1,x]) == sqrt(1 + x^2)
+            end
         end
 
         # =====================================================================
