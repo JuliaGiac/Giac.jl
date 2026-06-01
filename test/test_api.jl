@@ -88,16 +88,16 @@
             @testset "norm of matrix" begin
                 M = [1 2; 3 4]
                 A = GiacMatrix(M)
-                for p ∈ (1,2,3Inf)
-                    @test norm(M,p) == norm(A,p)
+                for p ∈ (1,2,3, Inf)
+                    @test norm(M,p) ≈ float(norm(A,p))
                 end
             end
 
             @testset "norm of GiacExpr" begin
-                m = [1 2 3]
+                m = [1, 2, 3]
                 a = Giac.Commands.list(m)
-                for p ∈ (1,2,3Inf)
-                    @test norm(m,p) == norm(a,p)
+                for p ∈ (1,2,3, Inf)
+                    @test norm(m,p) ≈ float(norm(a,p))
                 end
 
                 @giac_var x
