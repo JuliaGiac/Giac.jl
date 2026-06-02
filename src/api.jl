@@ -519,11 +519,28 @@ end
 """
     norm(m::Union{GiacExpr, Vector{GiacExpr}, p=2)::GiacExpr
 
+Find the `p`-norm of a `GiacExpr` or an  `AbstractVector` of `GiacExpr`
+elements.
 """
-function LinearAlgebra.norm(m::Union{T, Vector{T}}, p::Real=2) where {T <: GiacExpr}
-    p == 1   && return invoke_cmd(:l1norm, m)
-    p == 2   && return invoke_cmd(:l2norm, m)
-    p == Inf && return invoke_cmd(:maxnorm, m)
+function LinearAlgebra.norm(ex::GiacExpr, p::Real=2)::GiacExpr
+    p == 1   && return invoke_cmd(:l1norm, ex)
+    p == 2   && return invoke_cmd(:l2norm, ex)
+    p == Inf && return invoke_cmd(:maxnorm, ex)
     p > 0 || throw(ArgumentError("p not positive"))
-    return sum(xᵢ^p for xᵢ ∈ m)^(1/p)
+    𝑝 = convert(GiacExpr, p)
+    return sum(xᵢ^𝑝 for xᵢ ∈ ex)^(1/𝑝)
+end
+
+
+"""
+    norm(A::AbstractArray{GiacExpr})::GiacExpr
+
+Compute the `p`-norm (defaulting to `p=2`) as if `A` were a vector of the corresponding length.
+"""
+function LinearAlgebra.norm(A::AbstractArray{GiacExpr}, p::Real=2)::GiacExpr
+    norm(vec(A), p)
+end
+
+function LinearAlgebra.norm(V::AbstractVector{GiacExpr}, p::Real=2)::GiacExpr
+    norm(Commands.list(V), p)
 end
