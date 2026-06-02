@@ -533,7 +533,7 @@ function Base.convert(::Type{Float64}, g::GiacExpr)::Float64
         r = _convert_to_rational(g)
         return Float64(r)
     elseif is_constant(g)
-        float(to_julia(g))
+        Float64(to_julia(g))
     else
         # Symbolic constants, `sqrt(2)`, the non-finite atoms: `AbstractFloat`
         # handles these, and it would be odd for `convert` to refuse what
