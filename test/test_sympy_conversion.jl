@@ -109,15 +109,13 @@ using Giac: to_sympy, to_giac
         result = to_sympy(expr)
         @test result == log(symbols("x"))
 
-        # log10(x): GIAC evaluates log10 to the change-of-base form
-        # ln(x)/ln(10), with ln(10) reduced to a Float. The SymPy result is
-        # therefore log(x)/log(10) up to floating-point rounding; check
-        # numerical equality at x=10 (log10(10) == 1) instead of structural
-        # equality.
+        # log10(x): GIAC keeps log10 as the change-of-base form ln(x)/ln(10),
+        # which the bridge preserves exactly as log(x)/log(10) (symbolic,
+        # with Sym(10) -- not a floating-point constant).
         xvar = symbols("x")
         expr = giac_eval("log10(x)")
         result = to_sympy(expr)
-        @test isapprox(Float64(N(result.subs(xvar, 10))), 1.0; atol=1e-12)
+        @test result == log(xvar) / log(Sym(10))
 
         # x + 1
         expr = x + 1

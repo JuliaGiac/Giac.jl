@@ -117,6 +117,11 @@ function _gen_to_sympy(gen, var_cache::Dict{String, Sym})
             return converted[1] / converted[2]
         elseif op == "^"
             return converted[1] ^ converted[2]
+        elseif op == "inv"
+            # GIAC reciprocal operator (e.g. 1/ln(10) inside log10(x)).
+            # Build Sym(1)/arg explicitly so constants stay symbolic instead
+            # of relying on Base.inv being overloaded on Sym.
+            return Sym(1) / converted[1]
         else
             func = _get_julia_function(op)
             if func === nothing
