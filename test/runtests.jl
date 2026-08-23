@@ -190,6 +190,12 @@ using LinearAlgebra
     include("test_libpari_ext.jl")
 
     # ============================================================================
+    # SymPy Conversion Extension Tests (080-sympy-bridge)
+    # Verifies to_sympy(::GiacExpr) — the Giac -> SymPy.jl direction only so far.
+    # ============================================================================
+    include("test_sympy_conversion.jl")
+
+    # ============================================================================
     # Doctests
     # Runs jldoctest blocks in Giac docstrings via Documenter.doctest
     # ============================================================================

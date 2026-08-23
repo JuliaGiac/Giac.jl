@@ -152,8 +152,8 @@ using .Commands: invoke_cmd
 # Re-export hold_cmd and release from Commands submodule (055-held-cmd-display)
 using .Commands: hold_cmd, release
 
-# Conversion functions (extended by GiacSymbolicsExt and GiacMathJSONExt)
-export to_giac, to_symbolics, to_mathjson
+# Conversion functions (extended by GiacSymbolicsExt, GiacMathJSONExt and GiacSymPyExt)
+export to_giac, to_symbolics, to_mathjson, to_sympy
 
 # MCP server entry point (extended by GiacMCPExt when ModelContextProtocol is loaded)
 export giac_mcp_server
@@ -161,8 +161,9 @@ export giac_mcp_server
 """
     to_giac(expr)
 
-Convert an expression to GiacExpr. Extended by GiacSymbolicsExt for Symbolics.Num types
-and by GiacMathJSONExt for MathJSON.AbstractMathJSONExpr types.
+Convert an expression to GiacExpr. Extended by GiacSymbolicsExt for Symbolics.Num types,
+by GiacMathJSONExt for MathJSON.AbstractMathJSONExpr types, and by GiacSymPyExt for
+SymPy.Sym types.
 """
 function to_giac end
 
@@ -180,6 +181,16 @@ function to_symbolics end
 Convert a GiacExpr or GiacMatrix to a MathJSON.jl expression. Extended by GiacMathJSONExt.
 """
 function to_mathjson end
+
+"""
+    to_sympy(expr::GiacExpr)
+
+Convert a GiacExpr to a SymPy.jl (`SymPy.Sym`) expression. Extended by GiacSymPyExt.
+
+This function is **extended by `GiacSymPyExt` when `SymPy` is loaded**. Calling it
+without first loading `SymPy` raises a `MethodError`.
+"""
+function to_sympy end
 
 """
     giac_mcp_server(; name="giac-cas", version=string(pkgversion(Giac)), kwargs...) -> ModelContextProtocol.Server
