@@ -9,14 +9,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- **`GiacSymPyExt` implements `to_sympy(::GiacExpr)`** (080-sympy-bridge): the
-  Giac.jl ↔ SymPy.jl bridge now converts Giac expressions to `SymPy.Sym`
-  objects via direct C++ Gen tree traversal, preserving symbolic functions
-  (`sin`, `cos`, `exp`, `sqrt`, `ln` → `log`, …), rational/complex numbers,
-  arbitrary-precision integers, and mapping GIAC constants to their SymPy
-  counterparts (`pi` → `SymPy.PI`, `e` → `SymPy.E`, `i` → `SymPy.IM`).
-  The reverse direction (`to_giac(::SymPy.Sym)`) remains tracked separately.
-  Extension loads automatically when `SymPy` is loaded alongside `Giac`.
+- **`GiacSymPyExt` implements bidirectional Giac ↔ SymPy conversion**
+  (080-sympy-bridge): the Giac.jl ↔ SymPy.jl bridge now converts in both
+  directions via direct C++ Gen tree traversal (no string serialization):
+  - `to_sympy(::GiacExpr)` → `SymPy.Sym`: preserves symbolic functions
+    (`sin`, `cos`, `exp`, `sqrt`, `ln` → `log`, …), rational/complex numbers,
+    arbitrary-precision integers, and maps GIAC constants to SymPy
+    (`pi` → `SymPy.PI`, `e` → `SymPy.E`, `i` → `SymPy.IM`).
+  - `to_giac(::SymPy.Sym)` → `GiacExpr`: rebuilds SymPy's internal form back
+    to GIAC idioms (`Pow(x, 1/2)` → `sqrt(x)`, `Mul(x, Pow(y, -1))` → `x/y`,
+    SymPy singletons `Zero`/`One`/`NegativeOne`/`Half` → GIAC literals,
+    `log` → `ln`, `PI`/`E`/`I` → `pi`/`e`/`i`). Arbitrary-precision integers
+    are transferred via direct GMP binary access.
+  The extension loads automatically when `SymPy` is loaded alongside `Giac`.
+  Non-scalar SymPy matrices are refused with an `ErrorException`.
 
 - **`SECURITY.md`**, a reporting channel and an honest account of what
   `giac_eval` exposes, plus a short notice in the README. Every claim in it was

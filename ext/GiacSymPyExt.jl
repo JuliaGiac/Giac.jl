@@ -1,16 +1,16 @@
 # Extension module for SymPy.jl integration
-# Provides GiacExpr -> SymPy.Sym conversion (to_sympy).
+# Provides bidirectional conversion between GiacExpr and SymPy.Sym types:
+#   to_sympy(::GiacExpr)  -> Sym
+#   to_giac(::Sym)        -> GiacExpr
 # Requires the GIAC C++ wrapper library
 #
 # Feature 080-sympy-bridge: bidirectional bridge between Giac.jl and SymPy.jl.
-# This module currently implements the Giac -> SymPy direction via
-# `Giac.to_sympy(::GiacExpr)`. The reverse direction
-# (`Giac.to_giac(::SymPy.Sym)`) is tracked separately.
 
 module GiacSymPyExt
 
 using Giac
 using SymPy
+using CxxWrap: StdVector
 
 # ============================================================================
 # GIAC to Julia Name Mapping
@@ -164,6 +164,177 @@ function Giac.to_sympy(expr::GiacExpr)
     return _gen_to_sympy(gen, var_cache)
 end
 
-export to_sympy
+# ============================================================================
+# SymPy to Giac direction (to_giac(::Sym))
+# ============================================================================
+
+"""
+    SYMPY_TO_GIAC_NAME
+
+Dictionary mapping SymPy class names to GIAC operator names where they differ.
+For names that match exactly (`sin`, `cos`, `exp`, `tan`, …) the SymPy class
+name is used directly.
+"""
+const SYMPY_TO_GIAC_NAME = Dict{String, String}(
+    "log" => "ln",  # SymPy "log" <-> GIAC "ln" (natural logarithm)
+)
+
+"""
+    _bigint_to_gen(n::BigInt) -> Gen
+
+Convert a Julia `BigInt` to a GIAC `Gen` using direct GMP binary transfer.
+Mirrors `GiacSymbolicsExt._bigint_to_gen`.
+"""
+function _bigint_to_gen(n::BigInt)
+    if n == 0
+        return Giac.GiacCxxBindings.Gen(Int32(0))
+    end
+    n_sign = Int32(Base.sign(n))
+    abs_n = abs(n)
+    bit_count = ccall((:__gmpz_sizeinbase, :libgmp), Csize_t,
+                      (Ref{BigInt}, Cint), abs_n, 2)
+    byte_count = div(bit_count + 7, 8)
+    bytes = Vector{UInt8}(undef, byte_count)
+    actual_count = Ref{Csize_t}(0)
+    ccall((:__gmpz_export, :libgmp), Ptr{Cvoid},
+          (Ptr{UInt8}, Ref{Csize_t}, Cint, Csize_t, Cint, Csize_t, Ref{BigInt}),
+          bytes, actual_count, 1, 1, 1, 0, abs_n)
+    if actual_count[] < byte_count
+        resize!(bytes, actual_count[])
+    end
+    std_bytes = StdVector{UInt8}(bytes)
+    return Giac.GiacCxxBindings.make_zint_from_bytes(std_bytes, n_sign)
+end
+
+"""
+    _pyclass(ex::Sym) -> String
+
+Return the SymPy (Python) class name of `ex`, e.g. `"Add"`, `"Mul"`, `"Pow"`,
+`"Symbol"`, `"Integer"`, `"sin"`, `"Pi"`.
+"""
+@inline _pyclass(ex::Sym) = ex.o[:__class__][:__name__]
+
+"""
+    _sympy_to_gen(ex) -> Gen
+
+Recursively convert a SymPy `Sym` expression tree to a GIAC `Gen` using direct
+C++ construction (no string serialization). Mirrors
+`GiacSymbolicsExt._convert_to_gen`.
+"""
+function _sympy_to_gen(ex)
+    cls = _pyclass(ex)
+
+    if cls == "Integer"
+        return _bigint_to_gen(convert(BigInt, ex))
+
+    elseif cls == "Zero"
+        return Giac.GiacCxxBindings.Gen(Int32(0))
+    elseif cls == "One"
+        return Giac.GiacCxxBindings.Gen(Int32(1))
+    elseif cls == "NegativeOne"
+        return Giac.GiacCxxBindings.Gen(Int32(-1))
+    elseif cls == "Half"
+        return Giac.GiacCxxBindings.make_fraction(
+            Giac.GiacCxxBindings.Gen(Int32(1)),
+            Giac.GiacCxxBindings.Gen(Int32(2)))
+
+    elseif cls == "Float"
+        return Giac.GiacCxxBindings.Gen(Float64(convert(Float64, ex)))
+
+    elseif cls == "Rational"
+        num = _bigint_to_gen(convert(BigInt, ex.p))
+        den = _bigint_to_gen(convert(BigInt, ex.q))
+        return Giac.GiacCxxBindings.make_fraction(num, den)
+
+    elseif cls == "Symbol"
+        return Giac.GiacCxxBindings.make_identifier(string(ex.name))
+
+    elseif cls == "Pi"
+        return Giac.GiacCxxBindings.make_identifier("pi")
+
+    elseif cls == "Exp1"
+        return Giac.GiacCxxBindings.make_identifier("e")
+
+    elseif cls == "ImaginaryUnit"
+        # Build the actual GIAC complex 0+1*i rather than a bare identifier,
+        # so arithmetic like 4*I combines into 4*i instead of a malformed
+        # identifier product.
+        return Giac.GiacCxxBindings.make_complex(
+            Giac.GiacCxxBindings.Gen(Int32(0)),
+            Giac.GiacCxxBindings.Gen(Int32(1)))
+
+    elseif cls == "Add" || cls == "Mul"
+        op = (cls == "Add") ? "+" : "*"
+        args = ex.args
+        if length(args) == 1
+            return _sympy_to_gen(args[1])
+        end
+        gen_args = Giac.GiacCxxBindings.Gen[_sympy_to_gen(a) for a in args]
+        return Giac.GiacCxxBindings.make_symbolic_unevaluated(
+            op, StdVector{Giac.GiacCxxBindings.Gen}(gen_args))
+
+    elseif cls == "Pow"
+        args = ex.args
+        base = _sympy_to_gen(args[1])
+        exp = args[2]
+        # SymPy represents sqrt(x) as Pow(x, 1/2); rebuild as GIAC sqrt(x).
+        # The exponent may be the singleton "Half" class or a generic
+        # "Rational" equal to 1/2.
+        ecls = _pyclass(exp)
+        if (ecls == "Half") ||
+           (ecls == "Rational" &&
+            convert(BigInt, exp.p) == 1 && convert(BigInt, exp.q) == 2)
+            return Giac.GiacCxxBindings.make_symbolic_unevaluated(
+                "sqrt", StdVector{Giac.GiacCxxBindings.Gen}([base]))
+        end
+        exp_gen = _sympy_to_gen(exp)
+        return Giac.GiacCxxBindings.make_symbolic_unevaluated(
+            "^", StdVector{Giac.GiacCxxBindings.Gen}([base, exp_gen]))
+
+    else
+        # Generic function call: sin, cos, tan, exp, log, ... — map the name
+        # (e.g. log -> ln) and rebuild as a GIAC symbolic.
+        giac_name = get(SYMPY_TO_GIAC_NAME, cls, cls)
+        args = ex.args
+        gen_args = Giac.GiacCxxBindings.Gen[_sympy_to_gen(a) for a in args]
+        return Giac.GiacCxxBindings.make_symbolic_unevaluated(
+            giac_name, StdVector{Giac.GiacCxxBindings.Gen}(gen_args))
+    end
+end
+
+"""
+    Giac.to_giac(expr::Sym)
+
+Convert a SymPy.jl (`SymPy.Sym`) expression to a `GiacExpr`.
+
+Uses direct C++ Gen construction (no string serialization). Maps SymPy
+constants to their GIAC counterparts (`SymPy.PI` -> `pi`, `SymPy.E` -> `e`,
+`SymPy.IM` -> `i`), and `log` to GIAC `ln`. SymPy's `sqrt(x)` (internally
+`Pow(x, 1/2)`) is rebuilt as GIAC `sqrt(x)`.
+
+# Example
+```julia
+using Giac, SymPy
+x = symbols("x")
+giac_expr = to_giac(sin(x) + log(x))  # GiacExpr: sin(x)+ln(x)
+```
+"""
+function Giac.to_giac(expr::Sym)::GiacExpr
+    gen = _sympy_to_gen(expr)
+    return GiacExpr(Giac._gen_to_ptr(gen))
+end
+
+"""
+    Giac.to_giac(m::AbstractArray{<:Sym})
+
+Refuse non-scalar SymPy matrices: the bridge is scalar-only. Throws an
+`ErrorException`.
+"""
+function Giac.to_giac(m::AbstractArray{<:Sym})
+    error("to_giac(::AbstractArray{<:SymPy.Sym}) is not supported: " *
+          "the SymPy bridge is scalar-only")
+end
+
+export to_sympy, to_giac
 
 end # module GiacSymPyExt

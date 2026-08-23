@@ -1,6 +1,6 @@
 # SymPy.jl Integration
 
-Giac.jl provides integration with [SymPy.jl](https://github.com/JuliaPy/SymPy.jl) through the `to_sympy` conversion function, enabling interoperability between GIAC's symbolic computation engine and SymPy's Python-backed symbolic expressions.
+Giac.jl provides integration with [SymPy.jl](https://github.com/JuliaPy/SymPy.jl) through bidirectional conversion functions, enabling interoperability between GIAC's symbolic computation engine and SymPy's Python-backed symbolic expressions.
 
 The bridge is implemented as a package extension (`GiacSymPyExt`) that loads automatically when both `Giac` and `SymPy` are loaded.
 
@@ -14,9 +14,13 @@ using Giac, SymPy
 expr = x^2 + 1
 sym_expr = to_sympy(expr)  # SymPy: x^2 + 1
 
-# From a string
-result = giac_eval("sin(x) + ln(y)")
-to_sympy(result)  # sin(symbols("x")) + log(symbols("y"))
+# SymPy.Sym -> GiacExpr
+x = symbols("x")
+giac_expr = to_giac(sin(x) + log(x))  # GiacExpr: sin(x)+ln(x)
+
+# Round-trip
+original = giac_eval("sin(x) + ln(y)")
+roundtrip = to_giac(to_sympy(original))  # mathematically equivalent
 ```
 
 ## GiacExpr to SymPy
@@ -81,12 +85,49 @@ SymPy.expand(to_sympy(factored)) == symbols("z")^2 - 1  # true
 
 ## Name Mapping
 
-GIAC and Julia/SymPy use different names for the natural logarithm; the bridge maps it automatically. Functions with identical names (`sin`, `cos`, `exp`, `sqrt`, `tan`, …) are resolved from `Base` and applied to SymPy arguments.
+GIAC and Julia/SymPy use different names for the natural logarithm; the bridge maps it automatically in both directions. Functions with identical names (`sin`, `cos`, `exp`, `sqrt`, `tan`, …) are resolved from `Base` (Giac → SymPy) or used directly by their SymPy class name (SymPy → Giac).
 
 | GIAC | Julia / SymPy |
 |------|---------------|
 | `ln` | `log` |
 | `sin`, `cos`, `tan`, `exp`, `sqrt`, … | same name |
+
+## SymPy to GiacExpr
+
+The `to_giac` function converts a `SymPy.Sym` to a `GiacExpr` using direct C++ Gen construction (no string serialization). SymPy's internal representation is normalized back to GIAC idioms:
+
+- `Pow(x, 1/2)` (SymPy's `sqrt(x)`) → GIAC `sqrt(x)`
+- `Mul(x, Pow(y, -1))` (SymPy's `x/y`) → GIAC `x/y`
+- `Add(x, Mul(-1, y))` (SymPy's `x - y`) → GIAC `x-y`
+- SymPy singletons `Zero`, `One`, `NegativeOne`, `Half` → the corresponding GIAC literals / fraction
+- SymPy constants → GIAC counterparts (`PI` → `pi`, `E` → `e`, `I` → `i`)
+
+```julia
+x = symbols("x"); y = symbols("y")
+to_giac(Sym(42))            # 42
+to_giac(Sym(3) // Sym(4))   # 3/4
+to_giac(sin(x))             # sin(x)
+to_giac(log(x))             # ln(x)   (reverse name mapping)
+to_giac(sqrt(x))            # sqrt(x)
+to_giac(x^2 + 2*x + 1)      # x^2+2*x+1
+```
+
+Arbitrary-precision integers are transferred via direct GMP binary access:
+
+```julia
+to_giac(Sym(big"123456789012345678901234567890"))
+# GiacExpr holding a ZINT (arbitrary-precision integer)
+```
+
+## Round-Trip Fidelity
+
+```julia
+for s in ["42", "x", "sin(x)", "ln(x)", "sqrt(x)", "x+1",
+          "x*y", "x^2", "3/4", "3+4*i", "pi", "sin(cos(tan(x)))"]
+    original = giac_eval(s)
+    @test to_giac(to_sympy(original)) == original
+end
+```
 
 ## Error Handling
 
@@ -96,6 +137,13 @@ Unsupported GIAC types throw an `ErrorException`:
 to_sympy(giac_eval("\"hello\""))  # ERROR: Cannot convert GIAC string to SymPy.Sym
 ```
 
+Non-scalar SymPy values (matrices) are refused by the scalar bridge:
+
+```julia
+x = symbols("x")
+to_giac([x 1; 1 x])  # ERROR: to_giac(::AbstractArray{<:SymPy.Sym}) is not supported
+```
+
 ## API Reference
 
-See the [Conversion Functions](../api/core.md#conversion-functions) section in the Core API documentation for the full API reference of `to_sympy`.
+See the [Conversion Functions](../api/core.md#conversion-functions) section in the Core API documentation for the full API reference of `to_sympy` and `to_giac`.
