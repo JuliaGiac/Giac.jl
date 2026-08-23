@@ -64,6 +64,10 @@ to_sympy(giac_eval("exp(x)"))   # exp(symbols("x"))
 to_sympy(giac_eval("sqrt(x)"))  # sqrt(symbols("x"))
 to_sympy(giac_eval("ln(x)"))    # log(symbols("x"))
 
+# log10: GIAC evaluates log10(x) to the change-of-base form ln(x)/ln(10),
+# so the SymPy result is log(x)/log(10) (numerically equal to SymPy's log10).
+to_sympy(giac_eval("log10(x)"))  # log(x)/log(10)
+
 @giac_var x y
 to_sympy(x + 1)    # symbols("x") + 1
 to_sympy(x * y)    # symbols("x") * symbols("y")
@@ -90,6 +94,7 @@ GIAC and Julia/SymPy use different names for the natural logarithm; the bridge m
 | GIAC | Julia / SymPy |
 |------|---------------|
 | `ln` | `log` |
+| `log10` | `log(x)/log(10)` (change-of-base; GIAC evaluates `ln(10)` to a float) |
 | `sin`, `cos`, `tan`, `exp`, `sqrt`, … | same name |
 
 ## SymPy to GiacExpr
