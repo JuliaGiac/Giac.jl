@@ -1,6 +1,5 @@
 using Documenter
 using DocumenterLandingPage
-using DocumenterMermaid
 using Giac
 # Note: Giac.Commands is not imported here because it has ~2000 auto-generated
 # command functions. Their usage is documented in commands_submodule.md.
@@ -123,6 +122,7 @@ makedocs(
         # the full core-API docstring set plus worked examples. Ignoring it here
         # is Documenter's own recommended alternative to raising the general limit.
         size_threshold_ignore = ["api/core.md"],
+        assets = ["assets/custom-mermaid.js"],
     ),
     pages = _pages,
     checkdocs = :exports,
