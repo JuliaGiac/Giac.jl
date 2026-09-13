@@ -9,6 +9,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **`LibPARI.pari` no longer raises on a Giac-native `REAL`.**
+  `GiacLibPARIExt` recovers a `REAL`'s bit width by searching for the width
+  whose re-encoding reproduces Giac's printed decimal character for
+  character. That verification goes back out through `string(::BigFloat)`,
+  which renders MPFR's *shortest round-tripping* decimal — a different
+  decimal from Giac's own fixed-digit rendering of the same bits:
+
+  ```julia
+  julia> r = Giac.Commands.evalf(giac_eval("pi"), 20);
+
+  julia> string(r)                       # Giac's rendering
+  "3.1415926535897932385"
+
+  julia> setprecision(() -> string(parse(BigFloat, string(r))), BigFloat, 62)
+  "3.1415926535897932383"                # MPFR's, for the same 62 bits
+  ```
+
+  The two forms agree for any `REAL` that reached Giac *through* Julia, which
+  is every value the suite covered, so the gap went unnoticed. For a `REAL`
+  Giac built itself with `evalf(x, d)` they differ, no width verified, and
+  the search raised: `LibPARI.pari(Giac.Commands.evalf(giac_eval("pi"), 100))`
+  threw an `ArgumentError` inviting a bug report.
+
+  The search is unchanged where it closes. Where it does not, the bridge now
+  falls back to the narrowest width that holds every digit Giac printed —
+  never fewer, so nothing Giac showed is dropped. What a printed decimal
+  cannot carry is Giac's internal width, and the wrapper exposes no accessor
+  for it: `get_precision` takes a `GiacContext`, not a `Gen`, and is the
+  global `Digits`. Covered by tests over `evalf` at 20, 30, 50, 75 and 100
+  digits, alongside the existing PARI-origin widths.
+
 - **Reals now cross faithfully on Windows.** Two independent upstream defects
   had to be fixed before an MPFR value could survive the crossing; neither is
   in Giac.jl, and fixing only the first left the symptom unchanged. Surfaced
