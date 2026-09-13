@@ -7,6 +7,50 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **`AbstractFloat(::GiacExpr)`**, and with it `float`. Only the constructor
+  is declared: `Base.float(x) = AbstractFloat(x)` is defined on `Any` rather
+  than on `Number` (`base/float.jl`), so `float` follows even though
+  `GiacExpr` is not a `Number` — and code reaching for the constructor is
+  served too, which a bare `float` method would miss.
+
+  Integers and hardware floats land on `Float64`, big integers and MPFR
+  `REAL`s on `BigFloat`, `CPLX` on `Complex`, and a vector maps elementwise.
+  Giac's non-finite atoms map to `Inf`, `-Inf` and `NaN`; anything carrying a
+  free symbol, and anything that is not a number, raises `ArgumentError`.
+
+  Two details worth stating, because the obvious implementations get them
+  wrong:
+
+  * A `REAL` keeps the precision its own decimal carries. Giac prints a
+    `REAL` at the value's own precision, so `parse(BigFloat, string(ex))`
+    alone would round it to the ambient `precision(BigFloat)` — 78 digits by
+    default, whatever Giac computed.
+  * The symbolic branch reduces through `evalf(ex, 18)`, not 16. A `Float64`
+    needs 17 digits to round-trip, and rounding the exact value to 17 first
+    still costs an ulp on values such as `sqrt(2)`: at 16 digits, 8 of 19
+    tested values disagreed with Julia's own; at 18, none do.
+
+- **The concrete float constructors**, and the `convert` methods to match:
+  `Float64(::GiacExpr)`, `BigFloat(::GiacExpr)`, any `T<:AbstractFloat`
+  through one parametric constructor, plus `convert(T, ::GiacExpr)` and
+  `convert(AbstractFloat, ::GiacExpr)`. `convert(Float64, ::GiacExpr)`
+  already existed; the constructors did not, so `convert` worked where
+  `Float64(g)` raised `MethodError`.
+
+  A value that is not a single real number raises `InexactError` rather than
+  silently yielding a part of itself — `Float64(giac_eval("2 + 3i"))` and
+  `Float64(giac_eval("[1,2]"))` both refuse.
+
+### Changed
+
+- **`convert(Float64, ::GiacExpr)` accepts what `float` accepts.** It covered
+  `INT`, `ZINT`, `DOUBLE`, `REAL` and `FRAC` and refused the rest, so it and
+  `float` disagreed on `pi`, `e`, `sqrt(2)` and the non-finite atoms. It now
+  falls back to `AbstractFloat`. For genuinely symbolic input it raises
+  `ArgumentError`, where it used to raise `MethodError`.
+
 ### Fixed
 
 - **`LibPARI.pari` no longer raises on a Giac-native `REAL`.**
