@@ -7,6 +7,62 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **Reals now cross faithfully on Windows.** Two independent upstream defects
+  had to be fixed before an MPFR value could survive the crossing; neither is
+  in Giac.jl, and fixing only the first left the symptom unchanged. Surfaced
+  by [#22](https://github.com/JuliaGiac/Giac.jl/pull/22) and diagnosed with
+  the probe in [#26](https://github.com/JuliaGiac/Giac.jl/pull/26).
+
+  **1 — the type tag.** `class gen` stored its type tag as a bitfield
+  (`unsigned char type:5; unsigned char type_unused:3;`). GCC fuses adjacent
+  bitfield writes into one wider store and picks the bit placement in a
+  version-dependent way, so `GIAC_jll` (built with GCC 8) and
+  `libgiac_julia_jll` (GCC 10) disagreed about which bits held `type`:
+  libgiac wrote a gen tagged `_REAL`, the wrapper read back `_DOUBLE_`.
+  Every MPFR value therefore reached Julia truncated to twelve significant
+  digits on Windows — identically at 64, 128, 256, 512 and 1024 bits, since
+  53 bits is all a mis-tagged `DOUBLE` ever had.
+  [Yggdrasil#13717](https://github.com/JuliaPackaging/Yggdrasil/pull/13717)
+  ships `GIAC_jll` v2.0.2 with `GIAC_TYPE_ON_8BITS=1` — `type` becomes a
+  plain byte at offset 0, a layout no compiler can rearrange — and aligns
+  `preferred_gcc_version` with the wrapper's;
+  [Yggdrasil#14478](https://github.com/JuliaPackaging/Yggdrasil/pull/14478)
+  rebuilds `libgiac_julia_jll` as v0.5.1 against it.
+
+  **2 — the MinGW decimal parser.** With the tag corrected, Windows still
+  truncated. GIAC guarded the MPFR branch of `chartab2gen` with
+  `#if !defined __MINGW_H && defined HAVE_LIBMPFR`, so under MinGW it never
+  parsed a decimal literal into an MPFR real and fell back to `strtod` — a
+  `double`. Since `convert(GiacExpr, ::BigFloat)` reaches GIAC through
+  `giac_eval(string(x))`, every wide real entering Giac.jl on Windows was
+  rebuilt from 53 bits. The signature differs from defect 1: the tag now
+  reads `REAL`, but the width comes back 64 whatever was asked for.
+  [Yggdrasil#14776](https://github.com/JuliaPackaging/Yggdrasil/pull/14776)
+  ships `GIAC_jll` v2.0.3 with the guard corrected, and
+  [Yggdrasil#14781](https://github.com/JuliaPackaging/Yggdrasil/pull/14781)
+  rebuilds `libgiac_julia_jll` as v0.5.2 against it.
+
+  The `@test_broken` markers that guarded the affected `GiacLibPARIExt`
+  assertions on Windows are gone; those assertions are now plain `@test` on
+  every platform, so a regression fails the suite instead of hiding in it.
+  Both `windows-latest` jobs are green on the JLL pair this release requires.
+
+### Changed
+
+- **`[compat]` requires the fixed binaries**: `GIAC_jll` `"2.0.1"` →
+  `"2.0.3"` and `libgiac_julia_jll` `"0.5"` → `"0.5.2"`. Necessary, not
+  cosmetic — `libgiac_julia_jll` is a CxxWrap shim bound to exactly one GIAC
+  ABI, and every earlier pair carries at least one of the two defects above.
+  `libcxxwrap_julia_jll` moves `"0.14.9"` → `"0.14.10"` to match what the
+  wrapper itself requires; only 0.14.10+ ships artifacts for Julia 1.13/1.14,
+  so this is also what lets Giac.jl load there rather than failing with "GIAC
+  wrapper library not found".
+
+  `GIAC_jll` v2.0.2 additionally enables GSL, LAPACK (via `OpenBLAS32_jll`),
+  GLPK and PARI in the GIAC build, which were all disabled in v2.0.1.
+
 ## [0.14.3] - 2026-08-07
 
 ### Changed
