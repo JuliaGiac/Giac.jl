@@ -145,11 +145,13 @@ the value itself, in both directions — a 512-bit `t_REAL` reaches Giac with
 all 512 bits even while the ambient setting is 64, and comes back a 512-bit
 `t_REAL`.
 
-!!! note "Windows, on GIAC_jll before v2.0.2"
-    Reals did not cross on Windows at all under `GIAC_jll` v2.0.1 with
-    `libgiac_julia_jll` v0.5.0: a binary ABI mismatch made the wrapper read a
-    `_REAL` tag as `_DOUBLE_`, and a real arrived truncated to twelve
-    significant digits. Giac.jl's `[compat]` bounds now exclude that pair, so
+!!! note "Windows, on GIAC_jll before v2.0.3"
+    Reals did not cross on Windows at all before `GIAC_jll` v2.0.3 with
+    `libgiac_julia_jll` v0.5.2. Two separate defects were involved — a binary
+    ABI mismatch that made the wrapper read a `_REAL` tag as `_DOUBLE_`, and a
+    MinGW build guard that stopped GIAC parsing decimal literals into MPFR
+    reals — and either one on its own truncated a real to twelve significant
+    digits. Giac.jl's `[compat]` bounds now exclude every affected pair, so
     what follows holds on every platform. See
     [Reals once did not cross on Windows](@ref) for the diagnosis.
 
@@ -177,20 +179,28 @@ precision(gp_eval(string(p)))            # 128  — no error, no warning
 ```
 
 Values therefore cross structurally, or through exact Julia values (`BigInt`,
-`Rational`, `BigFloat`) — never through `string`. `BigFloat(::Gen)` widens the
-working precision to hold the mantissa exactly, and `LibPARI.pari(::BigFloat)`
-rebuilds a `t_REAL` from the mantissa and exponent, so the PARI legs are exact
-by construction.
+`Rational`, `BigFloat`) — never through PARI's own printer. `BigFloat(::Gen)`
+widens the working precision to hold the mantissa exactly, and
+`LibPARI.pari(::BigFloat)` rebuilds a `t_REAL` from the mantissa and exponent,
+so the PARI legs are exact by construction.
 
-### The one place text is unavoidable
+### Where text is unavoidable
 
-Reading a Giac `REAL` back out is the exception, and it is worth stating
-plainly. The libgiac wrapper exposes `to_double` — a `Float64`, and therefore
-lossy — and nothing for an MPFR value; reaching past it into an undeclared
-libgiac C symbol is a call this project does not make. Giac's printer emits a
-`REAL` at that value's *own* precision rather than at the global `Digits`
-setting, so the decimal it produces is faithful and only the bit width has to
-be recovered.
+Both Giac legs of a real are text-mediated, and it is worth stating plainly.
+
+Going in, `convert(GiacExpr, ::BigFloat)` hands GIAC a decimal literal through
+`giac_eval(string(x))`; `string(::BigFloat)` is round-trip exact, so the step
+is faithful wherever GIAC parses the literal into an MPFR real — which is
+precisely what a MinGW build guard prevented before `GIAC_jll` v2.0.3, and why
+reals arrived on Windows rebuilt from 53 bits. See
+[Reals once did not cross on Windows](@ref).
+
+Coming back out, the libgiac wrapper exposes `to_double` — a `Float64`, and
+therefore lossy — and nothing for an MPFR value; reaching past it into an
+undeclared libgiac C symbol is a call this project does not make. Giac's
+printer emits a `REAL` at that value's *own* precision rather than at the
+global `Digits` setting, so the decimal it produces is faithful and only the
+bit width has to be recovered.
 
 The bridge recovers that width by search and then re-encodes the candidate,
 accepting it only when the printed forms agree character for character. A
@@ -206,17 +216,18 @@ answer without complaint. See
 [Reals once did not cross on Windows](@ref).
 
 This would become unnecessary if the wrapper gained an MPFR accessor for
-`REAL`; until then it is the bridge's only text-mediated step.
+`REAL`; until then the width search is the bridge's own contribution to the
+text-mediated path.
 
 ## Reals once did not cross on Windows
 
 !!! compat "Fixed — kept as history"
-    Giac.jl requires `GIAC_jll` v2.0.2 and `libgiac_julia_jll` v0.5.1, which
-    do not have the defect described here. The section is kept because the
-    diagnosis is worth having on record, and because it still applies if you
-    are pinned to older binaries.
+    Giac.jl requires `GIAC_jll` v2.0.3 and `libgiac_julia_jll` v0.5.2, which
+    have neither of the two defects described here. The section is kept
+    because the diagnosis is worth having on record, and because it still
+    applies if you are pinned to older binaries.
 
-Under `GIAC_jll` v2.0.1 with `libgiac_julia_jll` v0.5.0, a `t_REAL` did not
+Before `GIAC_jll` v2.0.3 with `libgiac_julia_jll` v0.5.2, a `t_REAL` did not
 survive the crossing on Windows. Every real arrived truncated to twelve
 significant digits, whatever precision was asked for:
 
@@ -229,7 +240,11 @@ pari(to_giac(p)) == p     # was false on Windows, true elsewhere
 ```
 
 This was **not** a Giac printing quirk, and not something the bridge could
-work around. It was an ABI bug between the two binaries.
+work around. It was two independent bugs in the binaries, with the same
+visible symptom — which is why fixing the first one alone changed nothing on
+Windows.
+
+### Defect 1 — the type tag
 
 `class gen` stored its tag as a bitfield —
 `unsigned char type:5; unsigned char type_unused:3;`. GCC fuses adjacent
@@ -251,9 +266,32 @@ its `preferred_gcc_version` with the wrapper's, followed by
 [Yggdrasil#14478](https://github.com/JuliaPackaging/Yggdrasil/pull/14478)
 rebuilding `libgiac_julia_jll` as v0.5.1 against it. v0.5.0 was capped to
 `GIAC_jll` 2.0.1 in the General registry, so the resolver cannot pair the old
-wrapper with the new library. Same root cause as
+wrapper with the new library. Surfaced by
 [Giac.jl#22](https://github.com/JuliaGiac/Giac.jl/pull/22) and the diagnostic
 probe in [Giac.jl#26](https://github.com/JuliaGiac/Giac.jl/pull/26).
+
+### Defect 2 — the MinGW decimal parser
+
+That pair was not enough. With the tag read correctly, `giac_type` returned
+`REAL` and reals on Windows still arrived truncated — now with a different
+tell: the width came back 64 rather than the 512 that had been asked for.
+
+GIAC guarded the MPFR branch of `chartab2gen` with
+`#if !defined __MINGW_H && defined HAVE_LIBMPFR`. Under MinGW that branch was
+compiled out, so GIAC never built an MPFR real from a decimal literal and fell
+back to `strtod` — a `double`. The bridge walks straight into it: the
+PARI → Giac leg of a `t_REAL` is `convert(GiacExpr, BigFloat(g))`, and
+`convert(GiacExpr, ::BigFloat)` reaches GIAC through `giac_eval(string(x))`.
+A 512-bit value was therefore rebuilt from 53 bits on the way in, before the
+bridge's own decoder ever saw it.
+
+The fix was [Yggdrasil#14776](https://github.com/JuliaPackaging/Yggdrasil/pull/14776),
+bumping `GIAC_jll` to v2.0.3 with the guard corrected, followed by
+[Yggdrasil#14781](https://github.com/JuliaPackaging/Yggdrasil/pull/14781)
+rebuilding `libgiac_julia_jll` as v0.5.2 against it. Both `windows-latest`
+jobs have been green on that pair since.
+
+### What was and was not affected
 
 **Everything else in the bridge worked on Windows throughout** — integers,
 rationals, complex numbers, polynomials, vectors, matrices, the refusal list,
@@ -306,7 +344,7 @@ Giac.jl's suite rather than in your results.
    how much precision the value needs. Values are preserved either way.
 
 4. **Reals cross on every platform**, including Windows, from `GIAC_jll`
-   v2.0.2 and `libgiac_julia_jll` v0.5.1 — the versions Giac.jl's `[compat]`
+   v2.0.3 and `libgiac_julia_jll` v0.5.2 — the versions Giac.jl's `[compat]`
    requires. On older binaries a `t_REAL` arrived on Windows truncated to
    twelve significant digits; see
    [Reals once did not cross on Windows](@ref).
