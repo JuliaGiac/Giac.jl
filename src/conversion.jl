@@ -129,10 +129,25 @@ function unwrap_const(ex::GiacExpr)
     return ex
 end
 
+# Narrowest BigFloat width that holds `d` significant decimal digits.
+_float_width(d::Integer) = max(2, ceil(Int, d * log2(10)))
+
 """
+    AbstractFloat(ex::GiacExpr)
     float(ex::GiacExpr)
 
-Convert a Giac number or array to a floating point data type.
+Convert a Giac number, constant or array to a floating point value.
+
+Only the constructor is defined. `Base.float(x) = AbstractFloat(x)` is
+declared on `Any` rather than on `Number` (`base/float.jl`), so `float` comes
+along for free even though `GiacExpr` is not a `Number` — and, unlike a bare
+`float` method, this also serves code that reaches for the constructor.
+
+Integers and hardware floats land on `Float64`; a big integer or an MPFR
+`REAL` lands on `BigFloat`. A `REAL` keeps the precision its own decimal
+carries rather than being rounded to the ambient `precision(BigFloat)`.
+Giac's non-finite atoms map to `Inf`, `-Inf` and `NaN`. Anything with a free
+symbol, and anything that is not a number at all, raises `ArgumentError`.
 
 # Examples
 ```jldoctest
@@ -144,51 +159,83 @@ julia> float(giac_eval("2"))
 julia> float(giac_eval("2.34"))
 2.34
 
-julia> float(giac_eval("23456789012345678901"))
-2.3456789012345678901e+19
-
-julia> float(Giac.Commands.evalf(giac_eval("pi"), 100))
-3.141592653589793238462643383279502884197169399375105820974944592307816406286198
-
 julia> float(giac_eval("2 + 3i"))
 2.0 + 3.0im
 
 julia> float(giac_eval("1234567890/2345678901"))
 0.526315809667591
 
-julia> float(giac_eval("sin(2)"))
-0.9092974268256817
+julia> float(giac_eval("sin(2)")) === sin(2.0)
+true
 
 julia> float(giac_eval("[1,2,3]"))
 3-element Vector{Float64}:
  1.0
  2.0
  3.0
+
+julia> float(giac_eval("inf")), float(giac_eval("-inf"))
+(Inf, -Inf)
+
+julia> float(Giac.Commands.evalf(giac_eval("pi"), 100))
+3.14159265358979323846264338327950288419716939937510582097494459230781640628620899862803482534211706807
+```
+
+A big integer widens to `BigFloat`:
+
+```jldoctest; filter = r"e[+]?"
+julia> using Giac
+
+julia> float(giac_eval("23456789012345678901"))
+2.3456789012345678901e+19
 ```
 """
-function Base.float(ex::GiacExpr)
-    T = Giac.giac_type(ex)
+function Base.AbstractFloat(ex::GiacExpr)
+    T = giac_type(ex)
 
-    if T ∈ (INT, DOUBLE, FLOAT)
-        return convert(Float64, _convert_by_type(ex, T))
-    elseif T ∈ (ZINT,)
-        return convert(BigFloat, _convert_by_type(ex, T))
-    elseif T ∈ (REAL,)
-        return parse(BigFloat, string(ex))
-    elseif T == CPLX
-        return Complex(float(real(ex)), float(imag(ex)))
-    elseif T == FRAC
-        return float(numer(ex)) / float(denom(ex))
-    elseif T == VECT
-        return [float(x) for x in ex]
-    elseif Constants.is_giac_constant(ex)
-        ex == Constants._pi[] && return float(π)
+    T in (INT, DOUBLE, FLOAT) && return convert(Float64, _convert_by_type(ex, T))
+    T == ZINT && return convert(BigFloat, _convert_by_type(ex, T))
+    if T == REAL
+        # Giac prints a REAL at the value's own precision, so the decimal is
+        # faithful; parsing it at the ambient width would throw away whatever
+        # Giac computed beyond it. Take the width the decimal implies.
+        str = string(ex)
+        digits = count(isdigit, first(split(str, r"[eE]")))
+        return setprecision(() -> parse(BigFloat, str), BigFloat, _float_width(digits))
+    end
+    T == CPLX && return Complex(AbstractFloat(real(ex)), AbstractFloat(imag(ex)))
+    T == FRAC && return AbstractFloat(numer(ex)) / AbstractFloat(denom(ex))
+    if T == VECT
+        vals = [AbstractFloat(x) for x in ex]
+        # An empty comprehension is `Vector{Any}`; narrow it.
+        return isempty(vals) ? Float64[] : identity.(vals)
+    end
+
+    # Giac's non-finite atoms have no free symbols, so `is_constant` calls
+    # them constant, but `evalf` is a no-op on them (issue #19). Without this
+    # they reach the numeric branch below and come back unconverted.
+    str = string(ex)
+    (str == "infinity" || str == "+infinity") && return Inf
+    str == "-infinity" && return -Inf
+    str == "undef" && return NaN
+
+    if Constants.is_giac_constant(ex)
+        ex == Constants._pi[] && return float(pi)
         ex == Constants._e[] && return float(ℯ)
         ex == Constants._i[] && return float(im)
-    elseif Giac.is_constant(ex)
-        return to_julia(Giac.Commands.evalf(ex, 16))
+        # Any other recognised constant falls through rather than returning
+        # `nothing` from a spent `&&` chain.
     end
-    throw(ArgumentError("Can't convert expression to a floating point type"))
+
+    # 18 digits, not 16: a Float64 needs 17 to round-trip, and rounding the
+    # exact value to 17 first still costs an ulp on values such as sqrt(2).
+    # STRNG is excluded — a Giac string is constant, and is not a number.
+    if T != STRNG && is_constant(ex)
+        value = to_julia(Commands.evalf(ex, 18))
+        value isa Number && return float(value)
+    end
+
+    throw(ArgumentError("cannot convert `$str` to a floating point type"))
 end
 
 

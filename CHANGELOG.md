@@ -7,6 +7,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **`AbstractFloat(::GiacExpr)`**, and with it `float`. Only the constructor
+  is declared: `Base.float(x) = AbstractFloat(x)` is defined on `Any` rather
+  than on `Number` (`base/float.jl`), so `float` follows even though
+  `GiacExpr` is not a `Number` — and code reaching for the constructor is
+  served too, which a bare `float` method would miss.
+
+  Integers and hardware floats land on `Float64`, big integers and MPFR
+  `REAL`s on `BigFloat`, `CPLX` on `Complex`, and a vector maps elementwise.
+  Giac's non-finite atoms map to `Inf`, `-Inf` and `NaN`; anything carrying a
+  free symbol, and anything that is not a number, raises `ArgumentError`.
+
+  Two details worth stating, because the obvious implementations get them
+  wrong:
+
+  * A `REAL` keeps the precision its own decimal carries. Giac prints a
+    `REAL` at the value's own precision, so `parse(BigFloat, string(ex))`
+    alone would round it to the ambient `precision(BigFloat)` — 78 digits by
+    default, whatever Giac computed.
+  * The symbolic branch reduces through `evalf(ex, 18)`, not 16. A `Float64`
+    needs 17 digits to round-trip, and rounding the exact value to 17 first
+    still costs an ulp on values such as `sqrt(2)`: at 16 digits, 8 of 19
+    tested values disagreed with Julia's own; at 18, none do.
+
 ### Fixed
 
 - **`LibPARI.pari` no longer raises on a Giac-native `REAL`.**
