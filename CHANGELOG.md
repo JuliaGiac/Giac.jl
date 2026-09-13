@@ -7,7 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.14.3] - 2026-08-07
+
 ### Changed
+
+- **`GiacLibPARIExt` accepts LibPARI 0.18** — compat widened from `"0.17"`
+  to `"0.17, 0.18"`. LibPARI 0.18.0 changed nothing in its core API: it
+  narrows *its own* optional Symbolics bridge to Symbolics 7, which Giac.jl
+  already requires (`Symbolics = "7"`). Without this, installing Giac.jl
+  alongside LibPARI holds the latter back at 0.17.
+
+- **`ModelContextProtocol` compat widened from `"0.4"` to `"0.4, 0.6"`**
+  ([#60](https://github.com/s-celles/Giac.jl/pull/60),
+  [#61](https://github.com/s-celles/Giac.jl/pull/61)). 0.5 is skipped
+  deliberately, matching upstream. This PR was initially blocked: forcing
+  MCP to its latest compatible version left `LibPARI` unresolvable, since
+  the registered LibPARI 0.18.0 still capped its own MCP compat at `"0.4"`.
+  Unblocked by releasing
+  [LibPARI.jl 0.18.1](https://github.com/s-celles/LibPARI.jl/releases/tag/v0.18.1),
+  which widens that bound the same way.
 
 - **The macOS CI jobs run natively on `aarch64`** instead of asking for `x64`.
   `macos-latest` is Apple Silicon; `setup-julia` v2 tolerated the mismatch,
@@ -21,6 +39,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   names change.
 
 ### Fixed
+
+- **The docs build no longer warns about `api/core.md`'s HTML output size**
+  (103.68 KiB against a 100 KiB soft threshold). The page legitimately carries
+  the full core-API docstring set plus worked examples; `docs/make.jl` now
+  lists it in `size_threshold_ignore`, Documenter's own recommended
+  alternative to raising the general limit. The `missing_docs` warning for
+  the ~2000 auto-generated `Giac.Commands` functions stays in `warnonly` by
+  design — `commands_submodule.md` documents their usage pattern rather than
+  each function individually, and `checkdocs_ignored_modules` was tried and
+  rejected: it drops the whole submodule from Documenter's known bindings,
+  breaking the `@ref`s that already resolve for `invoke_cmd`, `hold_cmd`,
+  `release` and `Giac.Commands` itself.
+
+- **The documentation is no longer deployed twice on every push to `main`.**
+  Both `documentation.yml` and `CI.yml`'s `docs` job built the docs *and*
+  pushed to `gh-pages`, so the two raced; the merge of
+  [#58](https://github.com/s-celles/Giac.jl/pull/58) is where one lost, with
+  `error: failed to push some refs`. Earlier pushes passed on luck, not
+  correctness — the published docs were never wrong, only the CI colour was.
+  The `docs` job is removed and the dedicated workflow kept, since it also
+  covers tags (`tags: '*'`), which Documenter needs for versioned
+  deployments. Its job is renamed to `Documentation` because the `Protect
+  main` ruleset requires a status check under that exact name: without the
+  rename, every pull request would wait forever on a check no workflow
+  produced.
 
 - **The LibPARI bridge's real-number tests no longer fail the suite on
   Windows**, and the platform difference behind them is documented rather than

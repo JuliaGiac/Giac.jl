@@ -16,6 +16,11 @@ concurrency:
 
 jobs:
   build:
+    # Named `Documentation` because the `Protect main` ruleset requires a
+    # status check by that exact name. It used to come from CI.yml's `docs`
+    # job, which deployed to gh-pages in parallel with this one; that job is
+    # gone, so this workflow now supplies the check.
+    name: Documentation
     permissions:
       contents: write
       statuses: write

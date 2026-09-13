@@ -1,6 +1,6 @@
 name = "Giac"
 uuid = "e4421f97-9838-4fd0-9fa5-94f11373bf78"
-version = "0.14.2"
+version = "0.14.3"
 authors = ["Sébastien Celles <s.celles@gmail.com>"]
 
 [deps]
@@ -36,11 +36,11 @@ DataFrames = "1.6, 1.7, 1.8"
 Documenter = "1"
 ForwardDiff = "0.10, 1"
 GIAC_jll = "2.0.1"
-LibPARI = "0.17"
+LibPARI = "0.17, 0.18"
 Libdl = "1.10"
 LinearAlgebra = "1.10"
 MathJSON = "0.2, 0.3"
-ModelContextProtocol = "0.4"
+ModelContextProtocol = "0.4, 0.6"
 Random = "1.10"
 Symbolics = "7"
 Tables = "1.10, 1.11, 1.12"
