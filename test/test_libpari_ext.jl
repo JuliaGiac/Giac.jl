@@ -177,6 +177,30 @@ const GP = LibPARI.PARI
             end
         end
 
+        @testset "a Giac-native REAL crosses outward" begin
+            # Every real above reached Giac *through* Julia, so Giac's stored
+            # rendering is MPFR's shortest round-tripping decimal and the
+            # width search closes on it trivially. `evalf(x, d)` is the other
+            # origin: Giac builds the REAL itself and prints it in its own
+            # fixed-digit form, which is a different decimal for the same
+            # value. The search used to verify by re-encoding through
+            # `string(::BigFloat)` — normalising back to the shortest form —
+            # so no width reproduced the original and it raised outright.
+            for (src, digits) in
+                (("pi", 20), ("pi", 50), ("pi", 100), ("sqrt(2)", 30), ("exp(1)", 75))
+                g = Giac.Commands.evalf(giac_eval(src), digits)
+                @test Giac.giac_type(g) === REAL
+                p = LibPARI.pari(g)
+                @test LibPARI.gentype(p) === PT.T_REAL
+                # Every digit Giac printed survives; compare as values, at a
+                # width comfortably wider than either side.
+                setprecision(BigFloat, 8 + ceil(Int, 4 * digits * log2(10))) do
+                    want = parse(BigFloat, string(g))
+                    @test abs(BigFloat(p) - want) < abs(want) * big(10.0)^(-digits + 1)
+                end
+            end
+        end
+
         @testset "the value's precision, not the ambient one" begin
             # A 512-bit real crosses unchanged even while LibPARI's working
             # precision is set to 64 bits, and vice versa.
