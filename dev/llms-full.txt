@@ -5532,10 +5532,32 @@ global `Digits` setting, so the decimal it produces is faithful and only the
 bit width has to be recovered.
 
 The bridge recovers that width by search and then re-encodes the candidate,
-accepting it only when the printed forms agree character for character. A
-width for which nothing agrees raises rather than returning a quietly-rounded
-value. The behaviour is pinned by tests at 64, 128, 192, 256, 384, 512 and
-1024 bits.
+accepting it only when the printed forms agree character for character. The
+behaviour is pinned by tests at 64, 128, 192, 256, 384, 512 and 1024 bits.
+
+That search closes only for a real whose stored rendering is MPFR's shortest
+round-tripping decimal — which is every real that reached Giac *through*
+Julia, since `convert(GiacExpr, ::BigFloat)` puts it there. A real Giac built
+itself, with `evalf(x, d)`, is printed in Giac's own fixed-digit form, and
+that is a different decimal for the same bits:
+
+```julia
+julia> r = Giac.Commands.evalf(giac_eval("pi"), 20);
+
+julia> string(r)                       # Giac's rendering, 20 digits
+"3.1415926535897932385"
+
+julia> setprecision(() -> string(parse(BigFloat, string(r))), BigFloat, 62)
+"3.1415926535897932383"                # MPFR's, for the same 62 bits
+```
+
+The verification leg goes back out through `string(::BigFloat)`, so it sees
+the second form and never the first. For those values no width verifies, and
+the bridge falls back to the narrowest width that holds every digit Giac
+printed — never fewer, so nothing Giac showed is dropped. What is lost is
+Giac's internal width, which its printed decimal does not carry. Before this
+fallback existed, `LibPARI.pari(Giac.Commands.evalf(giac_eval("pi"), 100))`
+raised instead of returning.
 
 Note precisely what that check does and does not establish. It tests the
 **printer's self-consistency**, not its fidelity to the stored value. Those
