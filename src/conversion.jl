@@ -251,12 +251,17 @@ A value that is not a single real number, such as a complex or a vector,
 raises `InexactError`: it has no `Float64`, and silently taking a part of it
 would be worse than refusing.
 """
-function (::Type{T})(ex::GiacExpr) where {T<:AbstractFloat}
+function _real_value(::Type{T}, ex::GiacExpr) where {T<:AbstractFloat}
     value = AbstractFloat(ex)
-    value isa Real ||
-        throw(InexactError(nameof(T), T, ex))
-    return T(value)
+    value isa Real || throw(InexactError(nameof(T), T, ex))
+    return value
 end
+
+(::Type{T})(ex::GiacExpr) where {T<:AbstractFloat} = T(_real_value(T, ex))
+
+# `precision` is the point of a `BigFloat`, so take the keyword Base takes.
+Base.BigFloat(ex::GiacExpr; precision::Integer = Base.MPFR.DEFAULT_PRECISION[]) =
+    BigFloat(_real_value(BigFloat, ex); precision = precision)
 
 Base.convert(::Type{T}, ex::GiacExpr) where {T<:AbstractFloat} = T(ex)
 Base.convert(::Type{AbstractFloat}, ex::GiacExpr) = AbstractFloat(ex)

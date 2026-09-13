@@ -127,6 +127,12 @@ using Giac.GenTypes
         @test precision(BigFloat(Giac.Commands.evalf(giac_eval("pi"), 50))) ==
               precision(BigFloat)
 
+        # `precision` is what a BigFloat is for; take the keyword Base takes.
+        @test precision(BigFloat(giac_eval("2"))) == precision(BigFloat)
+        @test precision(BigFloat(giac_eval("2"); precision = 90)) == 90
+        @test precision(BigFloat(giac_eval("2"); precision = 512)) == 512
+        @test BigFloat(giac_eval("2"); precision = 90) == big(2.0)
+
         # Not a single real number: no Float64 for it.
         @test_throws InexactError Float64(giac_eval("2 + 3i"))
         @test_throws InexactError Float64(giac_eval("[1,2]"))
