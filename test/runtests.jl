@@ -51,6 +51,8 @@ using LinearAlgebra
 
     include("test_float_conversion.jl")
 
+    include("test_conversion_constructors.jl")
+
     # Multiple dispatch for conflicts tests (023-conflicts-multidispatch)
     include("test_conflicts_multidispatch.jl")
 

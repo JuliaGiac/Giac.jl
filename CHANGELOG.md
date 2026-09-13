@@ -9,6 +9,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **The numeric constructors on `GiacExpr`**: `Integer`, every concrete
+  `Signed`/`Unsigned` width including `BigInt`, `Rational` and
+  `Rational{T}`, `Complex` and `Complex{T}`, plus the `convert` methods that
+  were missing beside them (`convert(Integer, g)`, `convert(BigInt, g)`,
+  `convert(Rational{T}, g)`, `convert(ComplexF64, g)`).
+
+  `convert(T, ::GiacExpr)` had been written for a handful of concrete targets
+  and the matching constructors never were, so `convert(Int64, g)` worked
+  while `Int64(g)` raised `MethodError`. `convert` does not fall back to a
+  constructor for a user type, so neither direction filled the other in. This
+  is the same gap the float family had before v0.14.4.
+
+  Purely additive: each constructor delegates to the `convert` that already
+  existed wherever there is one, so nothing changes about what is accepted or
+  how a refusal is reported.
+
+  * `Integer(g)` yields `Int64` or `BigInt` by magnitude, so
+    `Integer(giac_eval("2^200"))` stays exact; narrowing that to `Int64`
+    raises `InexactError` rather than wrapping.
+  * `Bool` is an `Integer` in Julia but neither `Signed` nor `Unsigned`,
+    which keeps it out of the parametric constructor and with the
+    `convert(Bool, ::GiacExpr)` that already handled it.
+
+### Added
+
 - **`AbstractFloat(::GiacExpr)`**, and with it `float`. Only the constructor
   is declared: `Base.float(x) = AbstractFloat(x)` is defined on `Any` rather
   than on `Number` (`base/float.jl`), so `float` follows even though
