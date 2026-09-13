@@ -238,6 +238,29 @@ function Base.AbstractFloat(ex::GiacExpr)
     throw(ArgumentError("cannot convert `$str` to a floating point type"))
 end
 
+"""
+    Float64(ex::GiacExpr)
+    BigFloat(ex::GiacExpr)
+    convert(T, ex::GiacExpr)
+
+Narrow a Giac value to a concrete floating point type.
+
+Each goes through [`AbstractFloat`](@ref), so they accept exactly what it
+accepts — symbolic constants, `sqrt(2)` and the non-finite atoms included.
+A value that is not a single real number, such as a complex or a vector,
+raises `InexactError`: it has no `Float64`, and silently taking a part of it
+would be worse than refusing.
+"""
+function (::Type{T})(ex::GiacExpr) where {T<:AbstractFloat}
+    value = AbstractFloat(ex)
+    value isa Real ||
+        throw(InexactError(nameof(T), T, ex))
+    return T(value)
+end
+
+Base.convert(::Type{T}, ex::GiacExpr) where {T<:AbstractFloat} = T(ex)
+Base.convert(::Type{AbstractFloat}, ex::GiacExpr) = AbstractFloat(ex)
+
 
 # ============================================================================
 # Scalar Conversion Helpers
@@ -498,7 +521,11 @@ function Base.convert(::Type{Float64}, g::GiacExpr)::Float64
         r = _convert_to_rational(g)
         return Float64(r)
     else
-        throw(MethodError(convert, (Float64, g)))
+        # Symbolic constants, `sqrt(2)`, the non-finite atoms: `AbstractFloat`
+        # handles these, and it would be odd for `convert` to refuse what
+        # `float` accepts. It raises `ArgumentError` for genuinely symbolic
+        # input, where this used to raise `MethodError`.
+        return Float64(AbstractFloat(g))
     end
 end
 

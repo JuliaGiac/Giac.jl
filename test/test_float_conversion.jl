@@ -102,6 +102,40 @@ using Giac.GenTypes
         end
     end
 
+    @testset "the conversion family agrees" begin
+        # `convert(Float64, ::GiacExpr)` predates this; it covered INT, ZINT,
+        # DOUBLE, REAL and FRAC and refused everything else, so it and `float`
+        # disagreed on `pi`, `sqrt(2)` and the infinities. They now agree, and
+        # the constructors exist alongside `convert`.
+        for src in ("2", "2.34", "1/3", "pi", "e", "sqrt(2)", "sin(2)")
+            g = giac_eval(src)
+            @test Float64(g) === convert(Float64, g)
+            @test Float64(g) === Float64(float(g))
+        end
+
+        @test Float64(giac_eval("inf")) === Inf
+        @test Float64(giac_eval("-inf")) === -Inf
+        @test isnan(Float64(giac_eval("undef")))
+
+        @test convert(AbstractFloat, giac_eval("2")) === 2.0
+        @test BigFloat(giac_eval("2")) isa BigFloat
+        @test convert(BigFloat, giac_eval("2")) == big(2.0)
+        @test Float32(giac_eval("2.5")) === 2.5f0
+
+        # A wide REAL rounds to the requested width rather than refusing.
+        @test Float64(Giac.Commands.evalf(giac_eval("pi"), 50)) === Float64(pi)
+        @test precision(BigFloat(Giac.Commands.evalf(giac_eval("pi"), 50))) ==
+              precision(BigFloat)
+
+        # Not a single real number: no Float64 for it.
+        @test_throws InexactError Float64(giac_eval("2 + 3i"))
+        @test_throws InexactError Float64(giac_eval("[1,2]"))
+
+        # Symbolic input is still refused.
+        @test_throws ArgumentError Float64(giac_eval("x"))
+        @test_throws ArgumentError convert(Float64, giac_eval("x"))
+    end
+
     @testset "recognised constants" begin
         @test float(giac_eval("pi")) === Float64(pi)
         @test float(giac_eval("e")) === Float64(ℯ)
