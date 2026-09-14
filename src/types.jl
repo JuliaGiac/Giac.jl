@@ -651,11 +651,25 @@ mutable struct GiacContext
     ptr::Ptr{Cvoid}
     lock::ReentrantLock
 
+    """
+        GiacContext()
+
+    An evaluation context that owns its own `giac::context`. Variable
+    bindings made through it are visible only through it — not from another
+    `GiacContext`, and not from the default.
+    """
     function GiacContext()
-        # Use a sentinel pointer — the real C++ context is managed
-        # lazily by _get_cxxwrap_context() in wrapper.jl
-        obj = new(Ptr{Cvoid}(1), ReentrantLock())
+        obj = new(_new_giac_context(), ReentrantLock())
+        finalizer(_finalize_giaccontext, obj)
         return obj
+    end
+
+    # The process-wide context, for `DEFAULT_CONTEXT` and for every path that
+    # does not name one. Kept distinct because the tier-1, introspection and
+    # conversion helpers re-parse printed expressions there; see the note in
+    # wrapper.jl. Not finalized — there is nothing of ours to release.
+    function GiacContext(::Val{:shared})
+        return new(_SHARED_CONTEXT_PTR, ReentrantLock())
     end
 
     # Internal constructor for existing pointer

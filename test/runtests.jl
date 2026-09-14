@@ -53,6 +53,8 @@ using LinearAlgebra
 
     include("test_conversion_constructors.jl")
 
+    include("test_context_isolation.jl")
+
     include("test_to_julia_precision.jl")
 
     # Multiple dispatch for conflicts tests (023-conflicts-multidispatch)

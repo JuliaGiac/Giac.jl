@@ -241,7 +241,7 @@ module __init__ functions run BEFORE parent module __init__ in Julia.
 function __init__()
     try
         init_giac_library()
-        DEFAULT_CONTEXT[] = GiacContext()
+        DEFAULT_CONTEXT[] = GiacContext(Val(:shared))
         # Initialize command registry (003-giac-commands)
         _init_command_registry()
         # Generate command functions in Commands submodule (009-commands-submodule)
