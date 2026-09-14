@@ -68,4 +68,15 @@ jobs:
             ext === nothing && error("GiacSymPyExt did not load")
             @info "GiacSymPyExt loaded" ext'
       - name: Run the bridge tests standalone
-        run: julia --project=sympy-env test/test_sympy_conversion.jl
+        run: |
+          julia --project=sympy-env --code-coverage=user test/test_sympy_conversion.jl
+      # Coverage is collected here and nowhere else. The LibPARI job does not
+      # bother, because LibPARI is also in the main `test` target and the
+      # matrix covers it; SymPy is not, so without this the extension's lines
+      # are reported as entirely unhit.
+      - uses: julia-actions/julia-processcoverage@v1
+      - uses: codecov/codecov-action@v7
+        with:
+          files: lcov.info
+          token: ${{ secrets.CODECOV_TOKEN }}
+          fail_ci_if_error: false

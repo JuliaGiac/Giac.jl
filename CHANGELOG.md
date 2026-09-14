@@ -23,6 +23,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   job, with one deliberate difference: LibPARI is *also* covered by the main
   matrix, and SymPy is not.
 
+  That job also collects and uploads coverage, which the LibPARI one does not
+  need to: LibPARI is in the `test` target and the matrix covers it, whereas
+  moving SymPy out would otherwise report the extension's lines as entirely
+  unhit.
+
   `test/test_sympy_conversion.jl` gained its own `using Test` and `using Giac`.
   It had been relying on `runtests.jl` to load them, which would have made the
   standalone job fail before its first assertion.
