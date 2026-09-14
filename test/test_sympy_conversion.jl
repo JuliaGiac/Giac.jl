@@ -5,8 +5,14 @@
 # Modeled on test_mathjson_conversion.jl and test_symbolics_ext.jl, the two
 # existing bidirectional third-party bridges in this package.
 
-using SymPy
+# Self-contained, so the dedicated CI job can run this file on its own against
+# a project holding nothing but Giac and SymPy. Relying on runtests.jl to have
+# loaded Test and Giac first would make that job fail before the first
+# assertion.
+using Test
+using Giac
 using Giac: to_sympy, to_giac
+using SymPy
 
 @testset "SymPy Conversion (to_sympy)" begin
 

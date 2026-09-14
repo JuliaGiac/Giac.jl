@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **The SymPy bridge is tested by its own CI job, not by the main matrix.**
+  `SymPy.jl` reaches Python through PyCall, so `GiacSymPyExt` cannot
+  precompile unless the Python `sympy` module is importable. With `SymPy` in
+  the `test` target, every cell of the main matrix failed at precompile time
+  over a missing Python package — including `Symbolics -> SymbolicsSymPyExt`,
+  which is not this package's extension at all.
+
+  `SymPy` is out of the `test` target, and `.github/workflows/CI-SymPy.yml`
+  provisions Python (`PYTHON: ""`, so PyCall uses its own Conda interpreter
+  and SymPy.jl installs the module it needs) and runs
+  `test/test_sympy_conversion.jl` standalone. This follows the LibPARI bridge
+  job, with one deliberate difference: LibPARI is *also* covered by the main
+  matrix, and SymPy is not.
+
+  `test/test_sympy_conversion.jl` gained its own `using Test` and `using Giac`.
+  It had been relying on `runtests.jl` to load them, which would have made the
+  standalone job fail before its first assertion.
+
 ### Added
 
 - **`GiacSymPyExt` implements bidirectional Giac ↔ SymPy conversion**
