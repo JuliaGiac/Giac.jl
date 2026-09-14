@@ -34,6 +34,74 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **`Differential` operator** (spec 068): canonical SciML/ModelingToolkit-style
+  partial-differentiation operator. `Differential(x)(f)` for a declared function
+  `f(x, y)` returns a `DerivativeExpr` representing `∂f/∂x`. Composition handles
+  cross and higher-order partials: `Differential(y)(Differential(x)(f))` is
+  `∂²f/∂y∂x` (right-to-left Leibniz convention — see *Fixed* below);
+  `Differential(x)(Differential(x)(f))` is `∂²f/∂x²` (adjacent same-variable
+  steps collapse). Mono-variable functions also work: `Differential(t)(u)`.
+- **Symbolics-compatible algebraic surface on `Differential`**:
+  `Differential(t)^n` for `n ≥ 0` returns an order-`n` operator —
+  `Differential(t)^2 === Differential(t, 2)` and `Differential(t)^0 === identity`,
+  matching Symbolics.jl. `Differential * Differential` composes via Julia's
+  generic `∘`, so `(Differential(y) * Differential(x))(f) ==
+  (Differential(y) ∘ Differential(x))(f) == Differential(y)(Differential(x)(f))`.
+- **`expand_derivatives`** (Symbolics.jl parity): forces evaluation of a
+  `DerivativeExpr` to a plain `GiacExpr` (delegates to GIAC's `diff`), and is
+  the identity on any other value. Lets code written in the Symbolics.jl style
+  (`expand_derivatives(Differential(x)(expr))`) run unchanged on Giac.jl. Note
+  that Giac.jl's bare-expression branch already evaluates eagerly, so the
+  no-op fallback covers the common case.
+- **Two-argument `Differential(var, n)` shorthand**: `Differential(x, 2)(f)`
+  is exactly equivalent to `Differential(x)(Differential(x)(f))`, matching
+  Symbolics.jl's `Differential(x, 2)` form. The default `Differential(var)`
+  is `Differential(var, 1)`. Applies uniformly to function-form and
+  bare-expression operands.
+- **Bare-expression differentiation** via `Differential` (spec 068):
+  `Differential(x)(x^2 + y*x)` returns the plain `GiacExpr` `2*x + y`,
+  matching SymPy.jl's `diff(expr, var)` and Symbolics.jl's `Differential`.
+- **Multi-variable partial derivative support**: `DerivativeExpr` now records
+  an ordered sequence of `(variable, order)` differentiation steps, enabling
+  cross partials and arbitrary-depth composition. The single-step case is the
+  original mono-variable behavior.
+- **Math-convention `n`-th derivative display**: high-order derivatives
+  (`n ≥ 4`) now render with parenthesized superscript notation in `Base.show`
+  rather than long strings of primes. So `D(u, 5)` displays as `D: u⁽⁵⁾(t)`
+  (instead of `D: u'''''(t)`). The same applies to `DerivativePoint` display.
+  `Base.string` for `DerivativePoint` keeps prime notation regardless of order
+  because GIAC consumes prime-form initial-condition strings.
+- See `docs/migration/d_to_differential.md` for a full mapping table from the
+  deprecated `D` shapes to `Differential`.
+- **`examples/07_odes_pdes.jl`**: new Pluto notebook walking through symbolic
+  ODE solutions (first-order, harmonic, damped, third-order, RLC, forced) and
+  PDE expressions (heat, wave, transport, separation of variables for the heat
+  equation) using the canonical `Differential` operator. Linked from
+  `docs/src/pluto.md`.
+
+### Deprecated
+
+- **`D` operator** (spec 068): every call shape (`D(u)`, `D(u, n)`, `D(D(u))`,
+  `D(d::DerivativeExpr, n)`) now emits a one-time-per-call-site
+  `Base.depwarn` pointing to the `Differential` replacement. `D` will be
+  removed in the next published release. The multi-arg ambiguity case
+  (`D(f)` on `f(x, y)`) raises `ArgumentError` instead of warning, since
+  the previous silent-default-to-first-variable behavior was a correctness
+  hazard. The `D(d::DerivativeExpr)` chained call also now requires the
+  underlying derivative to be mono-variable; partial derivatives of mixed
+  variables must be composed via `Differential(var)(d)`.
+
+### Changed
+
+- **`DerivativeExpr` internal layout** (spec 068): the `varname::String` and
+  `order::Int` fields are replaced by `steps::Vector{Tuple{String, Int}}`.
+  This is an internal change — no user code is expected to construct
+  `DerivativeExpr` directly. Public arithmetic (`+`, `-`, `*`, `/`, `^`),
+  equation (`~`), and string-conversion behavior is preserved.
+
+
+### Added
+
 - **`GiacSymPyExt` implements bidirectional Giac ↔ SymPy conversion**
   (080-sympy-bridge): the Giac.jl ↔ SymPy.jl bridge now converts in both
   directions via direct C++ Gen tree traversal (no string serialization):
@@ -608,6 +676,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `latex(ifactor(360))` → `"5\cdot 2^{3}\cdot 3^{2}"`. Every other command
   keeps GIAC's normal evaluation semantics. Reported by
   [@kahliburke](https://github.com/kahliburke).
+
+### Fixed
+
+- **Partial-derivative pretty-print convention (right-to-left Leibniz)**: the
+  multi-step `Base.show` for `DerivativeExpr` previously printed
+  `Differential(y)(Differential(x)(f))` as `D: ∂²f/∂x∂y`, which is consistent
+  with the index/`f_{xy}` convention but inconsistent with the operator-product
+  reading `(∂/∂y)(∂/∂x)f = ∂²f/∂y∂x`. The display now uses the right-to-left
+  Leibniz convention — the **rightmost** variable in `∂ⁿf/∂v₁…∂vₙ` is applied
+  **first**, the leftmost last — so the same expression now prints as
+  `D: ∂²f/∂y∂x`. The `steps` field (innermost-first) and the GIAC-side
+  `diff(diff(f(x,y),x),y)` string are unchanged; only the human-facing
+  ∂-notation flips. By Schwarz/Clairaut the underlying value is symmetric
+  for sufficiently smooth functions, so this is purely a notation fix.
 
 ## [0.14.1] - 2026-05-11
 

@@ -39,6 +39,9 @@ _pages = [
     ],
     "Held Commands" => "held_commands.md",
     "Tables.jl Compatibility" => "tables.md",
+    "Migration" => [
+        "D → Differential" => "migration/d_to_differential.md",
+    ],
     "Extensions" => [
          "Symbolics.jl" => "extensions/symbolics.md",
          "SymPy.jl" => "extensions/sympy.md",

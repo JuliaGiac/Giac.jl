@@ -98,15 +98,15 @@ using Giac.Commands: desolve
 @giac_var t u(t)
 
 # First derivative at t=0: u'(0) = 1
-D(u)(0) ~ 1
+Differential(t)(u)(0) ~ 1
 
 # Second derivative at t=0: u''(0) = 0
-D(u, 2)(0) ~ 0
+Differential(t, 2)(u)(0) ~ 0
 
 # Full example: solve u'' + u = 0 with u(0)=1, u'(0)=0
-ode = D(D(u)) + u ~ 0
+ode = Differential(t, 2)(u) + u ~ 0
 u0 = u(0) ~ 1
-du0 = D(u)(0) ~ 0
+du0 = Differential(t)(u)(0) ~ 0
 desolve([ode, u0, du0], t, :u)  # Returns: cos(t)
 ```
 
@@ -118,17 +118,17 @@ The `D` operator follows SciML/ModelingToolkit conventions for expressing deriva
 @giac_var t u(t)
 
 # Create derivative expressions
-D(u)        # First derivative u'
-D(D(u))     # Second derivative u'' (chained)
-D(u, 2)     # Second derivative u'' (direct)
-D(u, 3)     # Third derivative u'''
+Differential(t)(u)        # First derivative u'
+Differential(t, 2)(u)     # Second derivative u'' (chained)
+Differential(t, 2)(u)     # Second derivative u'' (direct)
+Differential(t, 3)(u)     # Third derivative u'''
 
 # Use in ODE equations
-ode = D(D(u)) + u ~ 0    # u'' + u = 0
+ode = Differential(t, 2)(u) + u ~ 0    # u'' + u = 0
 
 # Use in initial conditions (produces prime notation for GIAC)
-D(u)(0) ~ 1              # u'(0) = 1
-D(u, 2)(0) ~ 0           # u''(0) = 0
+Differential(t)(u)(0) ~ 1              # u'(0) = 1
+Differential(t, 2)(u)(0) ~ 0           # u''(0) = 0
 ```
 
 **Complete ODE examples:**
@@ -139,12 +139,12 @@ using Giac.Commands: desolve
 
 # 2nd order: u'' + u = 0, u(0)=1, u'(0)=0
 @giac_var t u(t)
-result = desolve([D(D(u)) + u ~ 0, u(0) ~ 1, D(u)(0) ~ 0], t, :u)
+result = desolve([Differential(t, 2)(u) + u ~ 0, u(0) ~ 1, Differential(t)(u)(0) ~ 0], t, :u)
 # Returns: cos(t)
 
 # 3rd order: y''' - y = 0, y(0)=1, y'(0)=1, y''(0)=1
 @giac_var t y(t)
-result = desolve([D(y,3) - y ~ 0, y(0) ~ 1, D(y)(0) ~ 1, D(y,2)(0) ~ 1], t, :y)
+result = desolve([Differential(t, 3)(y) - y ~ 0, y(0) ~ 1, Differential(t)(y)(0) ~ 1, Differential(t, 2)(y)(0) ~ 1], t, :y)
 # Returns: exp(t)
 ```
 
