@@ -311,6 +311,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
   `GIAC_jll` v2.0.2 additionally enables GSL, LAPACK (via `OpenBLAS32_jll`),
   GLPK and PARI in the GIAC build, which were all disabled in v2.0.1.
+### Added
+
+- **`GiacNemoExt` bidirectional bridge to Nemo.jl** (081-nemo-oscar-bridge):
+  a package extension (loaded automatically when `Nemo` is loaded alongside
+  `Giac`) providing two entry points, modelled on the LibPARI bridge:
+  - `Giac.to_giac(::Nemo.RingElem)` — Nemo → Giac (outward). Supports
+    `ZZRingElem`, `QQFieldElem`, univariate polynomials over `ZZ`/`QQ`,
+    `FqFieldElem` (prime & non-prime), `AbsSimpleNumFieldElem`, and
+    `ZZMatrix`/`QQMatrix`. Arbitrary-precision integers are preserved as
+    `ZINT`; number-field elements are rebuilt already reduced mod their
+    defining polynomial.
+  - `Giac.to_nemo(::GiacExpr, parent)` — Giac → Nemo (inward). The caller
+    supplies the destination parent ring (`ZZ`, `QQ`, a univariate
+    `PolyRing`, an `AbsSimpleNumField`, an `FqField`, or a `MatSpace`),
+    because Nemo elements are parent-typed while a `GiacExpr` is an untyped
+    symbolic tree.
+  Round trips are value-preserving, not representation-preserving:
+  factored Giac forms arrive in Nemo expanded; variable names survive both
+  crossings, term order does not. Compare with `==`, never `string`.
+
+  Documented refusals (v1): transcendental functions (`sin`, `cos`, `exp`,
+  `ln`, `sqrt`, `log10`, …), the constants `pi`/`e`, real/complex balls
+  (`ArbFieldElem`/`AcbFieldElem`), p-adics, non-integer rationals into `ZZ`,
+  and multivariate polynomials. Reals are refused to avoid silent precision
+  loss via a printed decimal (the same trap the LibPARI bridge warns about).
+  Full mapping table, refusal list and limitations in
+  `docs/src/extensions/nemo.md`. `Nemo = "0.56"` compat.
 
 ## [0.14.3] - 2026-08-07
 
