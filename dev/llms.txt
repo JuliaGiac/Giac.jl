@@ -26,6 +26,7 @@
 - [Commands submodule](api/commands_submodule.html)
 - [Held Commands](held_commands.html)
 - [Tables.jl Compatibility](tables.html)
+- [D → Differential](migration/d_to_differential.html)
 - [Symbolics.jl](extensions/symbolics.html)
 - [SymPy.jl](extensions/sympy.html)
 - [MathJSON.jl](extensions/mathjson.html)
