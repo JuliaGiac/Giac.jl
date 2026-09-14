@@ -7,6 +7,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **`to_julia` no longer drops four digits from a symbolic constant.**
+
+  ```julia
+  to_julia(giac_eval("pi"))   # was 3.14159265359, now 3.141592653589793
+  to_julia(giac_eval("e"))    # was 2.71828182846, now 2.718281828459045
+  ```
+
+  `_convert_by_type` reduces a constant through `evalf` and reads the decimal
+  back. With no digit argument Giac reduces to a `DOUBLE` and prints it at the
+  global `Digits` — 12 — so `sqrt(2)`, `sin(1)` and every recognised constant
+  arrived truncated. Past 15 digits Giac builds a `REAL` instead, whose
+  decimal is faithful, so the call now asks for 18: a `Float64` needs 17 to
+  round-trip, and one more absorbs the double rounding that still costs an ulp
+  on values such as `sqrt(2)` at exactly 17.
+
+  This closes a disagreement introduced by the previous release: `float` was
+  fixed to reduce at 18 digits while `to_julia` was left at the default, so the
+  two gave different answers for the same expression. They now agree, and both
+  agree with Julia's own `sqrt(2.0)`, `sin(1.0)` and friends.
+
+  The issue #19 fixed point is unchanged: `inf`, `-inf` and `undef` are
+  constant by having no free symbols but cannot be reduced, and still come back
+  as `GiacExpr` rather than recursing.
+
 ### Added
 
 - **The numeric constructors on `GiacExpr`**: `Integer`, every concrete

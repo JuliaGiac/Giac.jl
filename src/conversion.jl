@@ -98,7 +98,14 @@ function _convert_by_type(g::GiacExpr, t::T)
         # is what callers asking "give me a Julia value" almost always want
         # (Issue #3). Otherwise return the GiacExpr unchanged.
         if is_constant(g)
-            ev = Commands.evalf(g)
+            # 18 digits, not `evalf`'s default. With no argument Giac reduces
+            # to a DOUBLE and prints it at the global `Digits` — 12 — so every
+            # constant reached Julia with four digits missing and
+            # `to_julia(giac_eval("pi"))` disagreed with `float` on the same
+            # expression. Past 15 digits Giac builds a REAL instead, whose
+            # decimal is faithful; 18 covers a Float64, which needs 17 to
+            # round-trip and one more to survive the double rounding.
+            ev = Commands.evalf(g, 18)
             # GIAC's `infinity` and `undef` atoms are constant-by-no-free-
             # symbols but cannot be reduced numerically: `evalf` is a no-op
             # on them (see issue #19). Detect the fixed point cheaply by
