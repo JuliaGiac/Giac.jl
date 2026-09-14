@@ -27,6 +27,7 @@
 - [Held Commands](held_commands.html)
 - [Tables.jl Compatibility](tables.html)
 - [Symbolics.jl](extensions/symbolics.html)
+- [SymPy.jl](extensions/sympy.html)
 - [MathJSON.jl](extensions/mathjson.html)
 - [MCP Server](extensions/mcp.html)
 - [TermInterface.jl](extensions/terminterface.html)
