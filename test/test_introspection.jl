@@ -169,12 +169,18 @@
             result = sqrt(x)
             @test occursin("sqrt", string(result))
 
+            result = cbrt(x)
+            @test occursin("surd(x,3)", string(result)) || occursin("surd", string(result))
+
             # Numeric
             result = exp(giac_eval("0"))
             @test to_julia(result) == 1
 
             result = sqrt(giac_eval("4"))
             @test to_julia(result) == 2
+            
+            result = cbrt(giac_eval("-8"))
+            @test to_julia(result) == -2
         end
 
         @testset "Arithmetic Functions" begin
