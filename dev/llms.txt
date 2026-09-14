@@ -32,6 +32,7 @@
 - [MCP Server](extensions/mcp.html)
 - [TermInterface.jl](extensions/terminterface.html)
 - [LibPARI.jl](extensions/libpari.html)
+- [Nemo.jl](extensions/nemo.html)
 - [Overview](developer/index.html)
 - [Package Architecture](developer/architecture.html)
 - [Performance Tiers](developer/tier-system.html)
