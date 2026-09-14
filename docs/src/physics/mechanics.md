@@ -145,7 +145,7 @@ Solve the SHM differential equation using the D operator:
 @giac_var t x(t) omega
 
 # SHM equation: x'' + ω²x = 0 using D operator
-ode = D(x, 2) + omega^2 * x ~ 0
+ode = Differential(t, 2)(x) + omega^2 * x ~ 0
 desolve([ode], t, :x)
 # Output: Contains sin(omega*t) and cos(omega*t) terms
 ```
@@ -171,7 +171,7 @@ solve(omega^2 ~ k/m, omega)
 # For small angles: θ'' + (g/L)θ = 0
 # Angular frequency: ω = sqrt(g/L)
 
-ode = D(theta, 2) + (g/L) * theta ~ 0
+ode = Differential(t, 2)(theta) + (g/L) * theta ~ 0
 desolve([ode], t, :theta)
 ```
 
