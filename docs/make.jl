@@ -46,6 +46,7 @@ _pages = [
          "MCP Server" => "extensions/mcp.md",
          "TermInterface.jl" => "extensions/terminterface.md",
          "LibPARI.jl" => "extensions/libpari.md",
+         "Nemo.jl" => "extensions/nemo.md",
     ],
     "Developer Guide" => [
         "Overview" => "developer/index.md",

@@ -152,8 +152,8 @@ using .Commands: invoke_cmd
 # Re-export hold_cmd and release from Commands submodule (055-held-cmd-display)
 using .Commands: hold_cmd, release
 
-# Conversion functions (extended by GiacSymbolicsExt, GiacMathJSONExt and GiacSymPyExt)
-export to_giac, to_symbolics, to_mathjson, to_sympy
+# Conversion functions (extended by GiacSymbolicsExt, GiacMathJSONExt, GiacSymPyExt, and GiacNemoExt)
+export to_giac, to_symbolics, to_mathjson, to_sympy, to_nemo
 
 # MCP server entry point (extended by GiacMCPExt when ModelContextProtocol is loaded)
 export giac_mcp_server
@@ -162,8 +162,10 @@ export giac_mcp_server
     to_giac(expr)
 
 Convert an expression to GiacExpr. Extended by GiacSymbolicsExt for Symbolics.Num types,
-by GiacMathJSONExt for MathJSON.AbstractMathJSONExpr types, and by GiacSymPyExt for
-SymPy.Sym types.
+by GiacMathJSONExt for MathJSON.AbstractMathJSONExpr types, by GiacSymPyExt for
+SymPy.Sym types, by GiacLibPARIExt for LibPARI.Gen types, and by GiacNemoExt for Nemo 
+ring elements (ZZRingElem, QQFieldElem, polynomials, finite-field and number-field 
+elements, matrices).
 """
 function to_giac end
 
@@ -191,6 +193,20 @@ This function is **extended by `GiacSymPyExt` when `SymPy` is loaded**. Calling 
 without first loading `SymPy` raises a `MethodError`.
 """
 function to_sympy end
+
+"""
+    to_nemo(expr::GiacExpr, parent)
+
+Convert a GiacExpr into a Nemo.jl element of the given parent ring
+(`ZZ`, `QQ`, a univariate polynomial ring, an `AbsSimpleNumField`, an
+`FqField`, or a `MatSpace`). Extended by `GiacNemoExt` when `Nemo` is
+loaded.
+
+The parent ring is required because Nemo elements are parent-typed while a
+`GiacExpr` is an untyped symbolic tree. Calling this without first loading
+`Nemo` raises a `MethodError`.
+"""
+function to_nemo end
 
 """
     giac_mcp_server(; name="giac-cas", version=string(pkgversion(Giac)), kwargs...) -> ModelContextProtocol.Server
