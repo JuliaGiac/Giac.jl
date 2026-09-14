@@ -189,6 +189,14 @@ using LinearAlgebra
     # ============================================================================
     include("test_libpari_ext.jl")
 
+    # The SymPy bridge is deliberately absent from this suite. SymPy.jl reaches
+    # Python through PyCall, so its extension cannot precompile unless the
+    # Python `sympy` module is importable — and with SymPy in the `test`
+    # target, every cell of the main matrix failed at precompile time over a
+    # missing Python package. It has its own job, which provisions Python and
+    # runs test/test_sympy_conversion.jl standalone; see
+    # .github/workflows/CI-SymPy.yml.
+
     # ============================================================================
     # Doctests
     # Runs jldoctest blocks in Giac docstrings via Documenter.doctest

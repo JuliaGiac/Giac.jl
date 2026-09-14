@@ -7,7 +7,47 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **The SymPy bridge is tested by its own CI job, not by the main matrix.**
+  `SymPy.jl` reaches Python through PyCall, so `GiacSymPyExt` cannot
+  precompile unless the Python `sympy` module is importable. With `SymPy` in
+  the `test` target, every cell of the main matrix failed at precompile time
+  over a missing Python package — including `Symbolics -> SymbolicsSymPyExt`,
+  which is not this package's extension at all.
+
+  `SymPy` is out of the `test` target, and `.github/workflows/CI-SymPy.yml`
+  provisions Python (`PYTHON: ""`, so PyCall uses its own Conda interpreter
+  and SymPy.jl installs the module it needs) and runs
+  `test/test_sympy_conversion.jl` standalone. This follows the LibPARI bridge
+  job, with one deliberate difference: LibPARI is *also* covered by the main
+  matrix, and SymPy is not.
+
+  That job also collects and uploads coverage, which the LibPARI one does not
+  need to: LibPARI is in the `test` target and the matrix covers it, whereas
+  moving SymPy out would otherwise report the extension's lines as entirely
+  unhit.
+
+  `test/test_sympy_conversion.jl` gained its own `using Test` and `using Giac`.
+  It had been relying on `runtests.jl` to load them, which would have made the
+  standalone job fail before its first assertion.
+
 ### Added
+
+- **`GiacSymPyExt` implements bidirectional Giac ↔ SymPy conversion**
+  (080-sympy-bridge): the Giac.jl ↔ SymPy.jl bridge now converts in both
+  directions via direct C++ Gen tree traversal (no string serialization):
+  - `to_sympy(::GiacExpr)` → `SymPy.Sym`: preserves symbolic functions
+    (`sin`, `cos`, `exp`, `sqrt`, `ln` → `log`, …), rational/complex numbers,
+    arbitrary-precision integers, and maps GIAC constants to SymPy
+    (`pi` → `SymPy.PI`, `e` → `SymPy.E`, `i` → `SymPy.IM`).
+  - `to_giac(::SymPy.Sym)` → `GiacExpr`: rebuilds SymPy's internal form back
+    to GIAC idioms (`Pow(x, 1/2)` → `sqrt(x)`, `Mul(x, Pow(y, -1))` → `x/y`,
+    SymPy singletons `Zero`/`One`/`NegativeOne`/`Half` → GIAC literals,
+    `log` → `ln`, `PI`/`E`/`I` → `pi`/`e`/`i`). Arbitrary-precision integers
+    are transferred via direct GMP binary access.
+  The extension loads automatically when `SymPy` is loaded alongside `Giac`.
+  Non-scalar SymPy matrices are refused with an `ErrorException`.
 
 - **`SECURITY.md`**, a reporting channel and an honest account of what
   `giac_eval` exposes, plus a short notice in the README. Every claim in it was

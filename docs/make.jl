@@ -41,6 +41,7 @@ _pages = [
     "Tables.jl Compatibility" => "tables.md",
     "Extensions" => [
          "Symbolics.jl" => "extensions/symbolics.md",
+         "SymPy.jl" => "extensions/sympy.md",
          "MathJSON.jl" => "extensions/mathjson.md",
          "MCP Server" => "extensions/mcp.md",
          "TermInterface.jl" => "extensions/terminterface.md",
