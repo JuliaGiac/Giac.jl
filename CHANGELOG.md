@@ -9,6 +9,59 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **`GiacContext` now isolates evaluations.** The type has always been public
+  and `giac_eval(expr, ctx)` has always taken one, but the context was
+  ignored: every evaluation funnelled into a single process-wide
+  `giac::context`, so a `:=` binding made through one context was visible from
+  every other and from the default.
+
+  ```julia
+  c1, c2 = GiacContext(), GiacContext()
+  giac_eval("zz := 7", c1)
+  giac_eval("zz", c1)   # 7
+  giac_eval("zz", c2)   # zz   — was 7
+  giac_eval("zz")       # zz   — was 7
+  ```
+
+  The wrapper gained the entry point for this in
+  [libgiac-julia-wrapper#4](https://github.com/JuliaGiac/libgiac-julia-wrapper/pull/4),
+  closing its issue #3; this is what makes it reach users. Note which overload
+  is needed: `giac_eval(ctx, str)` returns a `std::string` and loses the gen,
+  `giac_eval(str, ctx)` returns a `Gen`.
+
+  `GiacContext()` now owns a `giac::context` and releases it through its
+  finalizer.
+
+  **The default context deliberately keeps the old behaviour.** Anything that
+  does not name a context shares one process-wide context, because the tier-1
+  paths, introspection and the conversion helpers re-parse printed expressions
+  through the context-free entry point — moving the default would split the
+  package in two.
+
+  **Known limitation.** A `GiacExpr` carries its gen, not the context that
+  produced it, so an operation that re-parses it resolves free identifiers
+  against the *default* context:
+
+  ```julia
+  giac_eval("ww := 100")              # default
+  c = GiacContext()
+  giac_eval("ww := 7", c)             # isolated
+
+  giac_eval("ww + x", c)              # 7+x   — Giac substitutes eagerly, fine
+  f = giac_eval("quote(ww) + x", c)   # ww+x  — the identifier survives
+  simplify(f)                          # x+100 — resolved against the default
+  ```
+
+  The scope is narrow, since eager substitution means an identifier rarely
+  survives evaluation, but the failure is silent rather than an error. Lifting
+  it means making `GiacExpr` carry its context and removing the string round
+  trip from the tier-1 paths — the same work, not a follow-up patch.
+
+- **`GiacMCPExt` honours its own contract.** Its tool description says "each
+  call is independent — variable bindings (a := 5) do NOT persist across
+  calls", which one shared context could not deliver; a user binding leaked
+  into later calls. Each call now evaluates in a fresh `GiacContext`.
+
 - **`to_julia` no longer drops four digits from a symbolic constant.**
 
   ```julia
