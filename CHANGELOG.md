@@ -14,9 +14,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   checked against the `GIAC_jll` this package requires rather than taken from
   the Giac sources:
 
-  * `secure_run` is active — `cd`, `write`, `open`, `fopen` and `archive` all
-    raise `Running in secure mode`, and no file is created. `system()` is not
+  * `secure_run` is active — `cd`, `write`, `fopen` and `archive` all raise
+    `Running in secure mode`, and no file is created. `system()` is not
     defined as a Giac command on standard builds; `system("id")` stays inert.
+  * **`open` differs by platform**: it reports secure mode on Linux and macOS
+    but not on Windows. Found by CI rather than assumed. No file appears on
+    any platform, which is the property the suite asserts everywhere; the
+    message is asserted only where it holds.
   * **The `read*` family is not guarded.** `read16` returns the bytes of any
     readable file. `read` opens the file too but evaluates it as Giac source
     rather than returning it — a distinction worth stating precisely, since

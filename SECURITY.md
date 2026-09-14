@@ -27,17 +27,24 @@ Giac has a global `secure_run` flag, `true` by default on every standard build
 `check_secure()` refuse to run. Verified against the `GIAC_jll` this package
 requires:
 
-| Call | Result |
-|---|---|
-| `cd("/tmp")` | raises, `Running in secure mode` |
-| `write("/tmp/x", 0)` | raises, `Running in secure mode` |
-| `open("/tmp/x")` | raises, `Running in secure mode` |
-| `fopen("/tmp/x")` | raises, `Running in secure mode` |
-| `archive("/tmp/x", 1)` | raises, `Running in secure mode` |
+| Call | Linux / macOS | Windows |
+|---|---|---|
+| `cd(path)` | raises, `Running in secure mode` | same |
+| `write(path, 0)` | raises, `Running in secure mode` | same |
+| `fopen(path)` | raises, `Running in secure mode` | same |
+| `archive(path, 1)` | raises, `Running in secure mode` | same |
+| `open(path)` | raises, `Running in secure mode` | **does not report secure mode** |
 
-Each raises a `GiacError` carrying that message, and no file is created. `test/test_security.jl` asserts this on
-every run, so a build with `secure_run` disabled fails the suite rather than
-shipping quietly.
+Each raises a `GiacError` carrying that message, and no file is created.
+
+`open` is the exception, and the difference was found by CI rather than
+assumed: on Windows it does not report secure mode. What holds on every
+platform is that no file appears, which is the property
+`test/test_security.jl` asserts everywhere; the message is asserted only where
+it holds. If you rely on `open` being refused, do not rely on the message.
+
+The suite checks this on every run, so a build with `secure_run` disabled —
+compiled with `-DNSPIRE` — fails rather than shipping quietly.
 
 `system()` is not exposed either. On standard Linux, macOS and Windows builds
 it is not defined as a Giac command at all — `system("id")` evaluates to the

@@ -2,9 +2,12 @@
 #
 # Giac is a programming language reached through `giac_eval`, not an expression
 # calculator. Its own `secure_run` flag blocks the file-writing side of that
-# language and is on by default — but only on builds that were not compiled
-# with `-DNSPIRE`, so it is worth asserting rather than assuming. See
-# SECURITY.md.
+# language and is on by default — but only on builds not compiled with
+# `-DNSPIRE`, so it is worth asserting rather than assuming. See SECURITY.md.
+#
+# Paths are built with `tempname()` and written with forward slashes: a Giac
+# string literal eats the backslashes of a Windows path, which silently turns
+# every probe into a test of nothing.
 
 @testset "Security posture" begin
 
@@ -18,16 +21,31 @@
         end
     end
 
+    giac_path(p) = replace(p, '\\' => '/')
+
     @testset "secure_run is active" begin
-        # If this fails, libgiac was built with secure_run off and the
+        # If these fail, libgiac was built with secure_run off and the
         # deployment advice in SECURITY.md no longer holds.
+        probe = giac_path(tempname())
         @test blocked("cd(\"/tmp\")")
-        @test blocked("write(\"/tmp/giac_secure_probe\", 0)")
-        @test blocked("open(\"/tmp/giac_secure_probe\")")
-        @test blocked("fopen(\"/tmp/giac_secure_probe\")")
-        @test blocked("archive(\"/tmp/giac_secure_probe\", 1)")
-        # and nothing reached the filesystem
-        @test !isfile("/tmp/giac_secure_probe")
+        @test blocked("write(\"$probe\", 0)")
+        @test blocked("fopen(\"$probe\")")
+        @test blocked("archive(\"$probe\", 1)")
+
+        # `open` is the one that differs by platform: it reports secure mode
+        # on Linux and macOS but not on Windows. What matters either way is
+        # that nothing reaches the filesystem, so that is what is asserted
+        # everywhere and the message only where it holds.
+        if Sys.iswindows()
+            try
+                giac_eval("open(\"$probe\")")
+            catch
+            end
+        else
+            @test blocked("open(\"$probe\")")
+        end
+
+        @test !isfile(probe)
     end
 
     @testset "system() is not exposed" begin
@@ -38,16 +56,17 @@
 
     @testset "the read family is NOT guarded — known upstream gap" begin
         # Pinned deliberately. `_read` has no `check_secure()` call, so it
-        # reaches any file the process can read. If these ever start failing,
-        # Giac has been fixed upstream and SECURITY.md must be updated.
+        # reaches any file the process can read. If these start failing, Giac
+        # has been fixed upstream and SECURITY.md must be updated.
         path = tempname()
         write(path, "SECRET42")
+        gp = giac_path(path)
         try
             # `read16` returns the bytes — the clean exfiltration primitive.
-            @test occursin("SECRET42", string(giac_eval("read16(\"$path\")")))
+            @test occursin("SECRET42", string(giac_eval("read16(\"$gp\")")))
             # `read` opens the file too, but evaluates it as Giac source
-            # rather than returning it, so it is not asserted on content.
-            @test giac_eval("read(\"$path\")") isa GiacExpr
+            # rather than returning it, so its content is not asserted.
+            @test giac_eval("read(\"$gp\")") isa GiacExpr
         finally
             rm(path; force = true)
         end
