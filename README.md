@@ -14,6 +14,16 @@ For LLM integration via the Model Context Protocol, see
 
 For a KaimonSlate integration, see [GiacSlate.jl](https://github.com/JuliaGiac/GiacSlate.jl).
 
+## Security
+
+`giac_eval` hands a string to Giac's evaluation engine, and Giac is a
+programming language with file access, not an expression calculator. Its
+`secure_run` mode blocks the file-*writing* side by default, but the `read*`
+family is not guarded and reaches any file the process can read.
+
+**Never pass untrusted input to `giac_eval` without OS-level sandboxing.** See
+[SECURITY.md](SECURITY.md).
+
 ## Contributors
 
 See [CONTRIBUTORS.md](CONTRIBUTORS.md) for the people who built, reviewed,

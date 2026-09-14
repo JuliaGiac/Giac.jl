@@ -7,6 +7,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **`SECURITY.md`**, a reporting channel and an honest account of what
+  `giac_eval` exposes, plus a short notice in the README. Every claim in it was
+  checked against the `GIAC_jll` this package requires rather than taken from
+  the Giac sources:
+
+  * `secure_run` is active — `cd`, `write`, `open`, `fopen` and `archive` all
+    raise `Running in secure mode`, and no file is created. `system()` is not
+    defined as a Giac command on standard builds; `system("id")` stays inert.
+  * **The `read*` family is not guarded.** `read16` returns the bytes of any
+    readable file. `read` opens the file too but evaluates it as Giac source
+    rather than returning it — a distinction worth stating precisely, since
+    both are often described as "reads a file". Upstream gap; the fix is two
+    lines in Giac's `_read`.
+  * Giac's timeout does abort a runaway computation, **but cannot be used
+    in-process**: once it fires the interrupt state is process-wide and
+    sticky, every later evaluation raises, and neither `restart` nor a fresh
+    `GiacContext` recovers it. That is why no convenience wrapper for it is
+    exported — an API whose success leaves the library unusable is a trap.
+
+- **`test/test_security.jl`** asserts the posture on every run, so a libgiac
+  built without `secure_run` fails the suite instead of shipping quietly. The
+  unguarded `read*` behaviour is pinned too: if it starts failing, Giac has
+  been fixed upstream and the document needs updating.
+
 ### Fixed
 
 - **`GiacContext` now isolates evaluations.** The type has always been public
