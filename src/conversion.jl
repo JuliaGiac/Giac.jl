@@ -534,6 +534,59 @@ function Base.convert(::Type{Float64}, g::GiacExpr)::Float64
     end
 end
 
+# ============================================================================
+# Numeric constructors
+#
+# `convert(T, ::GiacExpr)` was written for a handful of concrete targets and
+# the matching constructors never were, so `convert(Int64, g)` worked while
+# `Int64(g)` raised MethodError — and `convert` does not fall back to a
+# constructor for a user type, so neither direction filled the other in.
+#
+# These delegate to the `convert` methods wherever one exists, so nothing
+# about the existing behaviour changes, refusals included.
+# ============================================================================
+
+"""
+    Integer(g::GiacExpr) -> Union{Int64,BigInt}
+
+The integer behind an integer `GiacExpr`, staying `BigInt` when it does not
+fit a machine word. `Int64(g)`, `Int32(g)`, `BigInt(g)` and the rest narrow
+this, raising `InexactError` when the value does not fit the requested type.
+"""
+function Base.Integer(g::GiacExpr)
+    t = giac_type(g)
+    t == INT && return _convert_to_int64(g)
+    t == ZINT && return _convert_to_bigint(g)
+    throw(MethodError(Integer, (g,)))
+end
+
+# `Bool` is an `Integer` but is neither `Signed` nor `Unsigned`, which keeps
+# it out of this and with the `convert(Bool, ...)` already defined below.
+(::Type{T})(g::GiacExpr) where {T<:Union{Signed,Unsigned}} = T(Integer(g))
+
+Base.convert(::Type{T}, g::GiacExpr) where {T<:Union{Signed,Unsigned}} = T(g)
+Base.convert(::Type{Integer}, g::GiacExpr) = Integer(g)
+
+"""
+    Rational(g::GiacExpr) -> Rational
+
+The rational behind a fraction or an integer `GiacExpr`.
+"""
+Base.Rational(g::GiacExpr) = convert(Rational, g)
+(::Type{Rational{T}})(g::GiacExpr) where {T<:Integer} =
+    convert(Rational{T}, convert(Rational, g))
+Base.convert(::Type{Rational{T}}, g::GiacExpr) where {T<:Integer} = Rational{T}(g)
+
+"""
+    Complex(g::GiacExpr) -> Complex
+
+The complex behind a `CPLX` `GiacExpr`; a real numeric one widens.
+"""
+Base.Complex(g::GiacExpr) = convert(Complex, g)
+(::Type{Complex{T}})(g::GiacExpr) where {T<:Real} =
+    convert(Complex{T}, convert(Complex, g))
+Base.convert(::Type{Complex{T}}, g::GiacExpr) where {T<:Real} = Complex{T}(g)
+
 """
     Base.convert(::Type{Vector}, g::GiacExpr) -> Vector
 
