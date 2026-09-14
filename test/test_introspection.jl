@@ -413,6 +413,7 @@
         @test Giac.unwrap_const(giac_eval("sin(pi/2)")) ≈ 1
         @test Giac.unwrap_const(giac_eval("sin(x)")) == giac_eval("sin(x)")
 
+
         # Issue #19: `infinity` and `undef` are GIAC atoms with no free
         # symbols, so is_constant must report them as constants. The
         # compound infinity forms (`+infinity`, `-infinity`, `inf`,
@@ -444,6 +445,17 @@
         @test !Giac.is_constant(giac_eval("NaN"))
         @test !Giac.is_constant(giac_eval("undefined"))
         @test !Giac.is_constant(giac_eval("unsigned_infinity"))
+    end
+
+    # ========================================================================
+    # float conversion
+    # ========================================================================
+    @testset "float conversion" begin
+        @test float(giac_eval("1")) == 1.0
+        @test float(giac_eval("1.2")) == 1.2
+        @test float(giac_eval("1 + i")) == 1.0 + 1.0*im
+        @test float(giac_eval("1/2")) == 0.5
+        @test float(giac_eval("[1,2,3]")) == [1.0, 2.0, 3.0]
     end
 
     # ========================================================================
