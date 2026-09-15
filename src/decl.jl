@@ -242,7 +242,7 @@ sym(x::AssumptionsDecl) = sym(x.rest)
 # predicates of the form `<(𝑥)`, `<=(𝑥)`, `>=(𝑥)`, or `>(𝑥)`
 function symbols(x, args...; kwargs...)
     if contains(x, ",")
-        nm = [giac_eval(string(xᵢ)) for xᵢ ∈ split(x, ",")]
+        nm = [giac_eval(String(strip(string(xᵢ)))) for xᵢ ∈ split(x, ",")]
         for x ∈ nm
             _add_assumptions!(x, args)
         end
