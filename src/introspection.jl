@@ -190,6 +190,12 @@ function is_vector(g::GiacExpr)::Bool
     return giac_type(g) == VECT
 end
 
+# is VECT also a matrix?
+function is_vector_matrix(g::GiacExpr)::Bool
+    is_vector(g) && subtype(g) == 11
+end
+
+
 """
     is_symbolic(g::GiacExpr) -> Bool
 
