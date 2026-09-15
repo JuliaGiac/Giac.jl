@@ -1,0 +1,82 @@
+name: CI (SymPy bridge)
+
+# The SymPy.jl bridge gets its own job, and unlike the LibPARI one it is not
+# also covered by the main matrix. That is not a stylistic choice:
+#
+# SymPy.jl reaches Python through PyCall, so the extension cannot even
+# precompile unless the Python `sympy` module is importable. With SymPy in the
+# main `test` target, every cell of the matrix failed at precompile time —
+# including `Symbolics -> SymbolicsSymPyExt`, which is not ours — with
+# `ModuleNotFoundError("No module named 'sympy'")`. Six red cells, none of
+# them about Giac.
+#
+# So this job provisions Python and owns the bridge's coverage. `PYTHON: ""`
+# tells PyCall to use its own Conda-provided interpreter rather than whatever
+# the runner has, which is what lets SymPy.jl install the module it needs.
+
+on:
+  push:
+    branches:
+      - main
+      - 'release-*'
+    tags:
+      - 'v*'
+  pull_request:
+    branches:
+      - main
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ startsWith(github.ref, 'refs/pull/') }}
+
+jobs:
+  sympy-bridge:
+    name: SymPy bridge - Julia ${{ matrix.version }} - ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    env:
+      PYTHON: ""
+    strategy:
+      fail-fast: false
+      matrix:
+        version:
+          - '1.10'  # LTS
+          - '1'     # Latest stable
+        os:
+          - ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: julia-actions/setup-julia@v3
+        with:
+          version: ${{ matrix.version }}
+          arch: x64
+      - uses: julia-actions/cache@v3
+      - name: Build a project holding only Giac and SymPy
+        run: |
+          mkdir -p sympy-env
+          julia --project=sympy-env -e '
+            using Pkg
+            Pkg.develop(PackageSpec(path = pwd()))
+            Pkg.add("SymPy")
+            Pkg.build("PyCall")
+            Pkg.instantiate()
+            Pkg.status()'
+      - name: Assert the extension is loaded
+        run: |
+          julia --project=sympy-env -e '
+            using Giac, SymPy
+            ext = Base.get_extension(Giac, :GiacSymPyExt)
+            ext === nothing && error("GiacSymPyExt did not load")
+            @info "GiacSymPyExt loaded" ext'
+      - name: Run the bridge tests standalone
+        run: |
+          julia --project=sympy-env --code-coverage=user test/test_sympy_conversion.jl
+      # Coverage is collected here and nowhere else. The LibPARI job does not
+      # bother, because LibPARI is also in the main `test` target and the
+      # matrix covers it; SymPy is not, so without this the extension's lines
+      # are reported as entirely unhit.
+      - uses: julia-actions/julia-processcoverage@v1
+      - uses: codecov/codecov-action@v7
+        with:
+          files: lcov.info
+          token: ${{ secrets.CODECOV_TOKEN }}
+          fail_ci_if_error: false

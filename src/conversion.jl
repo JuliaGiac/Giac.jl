@@ -98,7 +98,14 @@ function _convert_by_type(g::GiacExpr, t::T)
         # is what callers asking "give me a Julia value" almost always want
         # (Issue #3). Otherwise return the GiacExpr unchanged.
         if is_constant(g)
-            ev = Commands.evalf(g)
+            # 18 digits, not `evalf`'s default. With no argument Giac reduces
+            # to a DOUBLE and prints it at the global `Digits` — 12 — so every
+            # constant reached Julia with four digits missing and
+            # `to_julia(giac_eval("pi"))` disagreed with `float` on the same
+            # expression. Past 15 digits Giac builds a REAL instead, whose
+            # decimal is faithful; 18 covers a Float64, which needs 17 to
+            # round-trip and one more to survive the double rounding.
+            ev = Commands.evalf(g, 18)
             # GIAC's `infinity` and `undef` atoms are constant-by-no-free-
             # symbols but cannot be reduced numerically: `evalf` is a no-op
             # on them (see issue #19). Detect the fixed point cheaply by
@@ -128,6 +135,144 @@ function unwrap_const(ex::GiacExpr)
     end
     return ex
 end
+
+# Narrowest BigFloat width that holds `d` significant decimal digits.
+_float_width(d::Integer) = max(2, ceil(Int, d * log2(10)))
+
+"""
+    AbstractFloat(ex::GiacExpr)
+    float(ex::GiacExpr)
+
+Convert a Giac number, constant or array to a floating point value.
+
+Only the constructor is defined. `Base.float(x) = AbstractFloat(x)` is
+declared on `Any` rather than on `Number` (`base/float.jl`), so `float` comes
+along for free even though `GiacExpr` is not a `Number` — and, unlike a bare
+`float` method, this also serves code that reaches for the constructor.
+
+Integers and hardware floats land on `Float64`; a big integer or an MPFR
+`REAL` lands on `BigFloat`. A `REAL` keeps the precision its own decimal
+carries rather than being rounded to the ambient `precision(BigFloat)`.
+Giac's non-finite atoms map to `Inf`, `-Inf` and `NaN`. Anything with a free
+symbol, and anything that is not a number at all, raises `ArgumentError`.
+
+# Examples
+```jldoctest
+julia> using Giac
+
+julia> float(giac_eval("2"))
+2.0
+
+julia> float(giac_eval("2.34"))
+2.34
+
+julia> float(giac_eval("2 + 3i"))
+2.0 + 3.0im
+
+julia> float(giac_eval("1234567890/2345678901"))
+0.526315809667591
+
+julia> float(giac_eval("sin(2)")) === sin(2.0)
+true
+
+julia> float(giac_eval("[1,2,3]"))
+3-element Vector{Float64}:
+ 1.0
+ 2.0
+ 3.0
+
+julia> float(giac_eval("inf")), float(giac_eval("-inf"))
+(Inf, -Inf)
+
+julia> float(Giac.Commands.evalf(giac_eval("pi"), 100))
+3.14159265358979323846264338327950288419716939937510582097494459230781640628620899862803482534211706807
+```
+
+A big integer widens to `BigFloat`:
+
+```jldoctest; filter = r"e[+]?"
+julia> using Giac
+
+julia> float(giac_eval("23456789012345678901"))
+2.3456789012345678901e+19
+```
+"""
+function Base.AbstractFloat(ex::GiacExpr)
+    T = giac_type(ex)
+
+    T in (INT, DOUBLE, FLOAT) && return convert(Float64, _convert_by_type(ex, T))
+    T == ZINT && return convert(BigFloat, _convert_by_type(ex, T))
+    if T == REAL
+        # Giac prints a REAL at the value's own precision, so the decimal is
+        # faithful; parsing it at the ambient width would throw away whatever
+        # Giac computed beyond it. Take the width the decimal implies.
+        str = string(ex)
+        digits = count(isdigit, first(split(str, r"[eE]")))
+        return setprecision(() -> parse(BigFloat, str), BigFloat, _float_width(digits))
+    end
+    T == CPLX && return Complex(AbstractFloat(real(ex)), AbstractFloat(imag(ex)))
+    T == FRAC && return AbstractFloat(numer(ex)) / AbstractFloat(denom(ex))
+    if T == VECT
+        vals = [AbstractFloat(x) for x in ex]
+        # An empty comprehension is `Vector{Any}`; narrow it.
+        return isempty(vals) ? Float64[] : identity.(vals)
+    end
+
+    # Giac's non-finite atoms have no free symbols, so `is_constant` calls
+    # them constant, but `evalf` is a no-op on them (issue #19). Without this
+    # they reach the numeric branch below and come back unconverted.
+    str = string(ex)
+    (str == "infinity" || str == "+infinity") && return Inf
+    str == "-infinity" && return -Inf
+    str == "undef" && return NaN
+
+    if Constants.is_giac_constant(ex)
+        ex == Constants._pi[] && return float(pi)
+        ex == Constants._e[] && return float(ℯ)
+        ex == Constants._i[] && return float(im)
+        # Any other recognised constant falls through rather than returning
+        # `nothing` from a spent `&&` chain.
+    end
+
+    # 18 digits, not 16: a Float64 needs 17 to round-trip, and rounding the
+    # exact value to 17 first still costs an ulp on values such as sqrt(2).
+    # STRNG is excluded — a Giac string is constant, and is not a number.
+    if T != STRNG && is_constant(ex)
+        value = to_julia(Commands.evalf(ex, 18))
+        value isa Number && return float(value)
+    end
+
+    throw(ArgumentError("cannot convert `$str` to a floating point type"))
+end
+
+"""
+    Float64(ex::GiacExpr)
+    BigFloat(ex::GiacExpr)
+    convert(T, ex::GiacExpr)
+
+Narrow a Giac value to a concrete floating point type.
+
+Each goes through [`AbstractFloat`](@ref), so they accept exactly what it
+accepts — symbolic constants, `sqrt(2)` and the non-finite atoms included.
+A value that is not a single real number, such as a complex or a vector,
+raises `InexactError`: it has no `Float64`, and silently taking a part of it
+would be worse than refusing.
+"""
+function _real_value(::Type{T}, ex::GiacExpr) where {T<:AbstractFloat}
+    value = AbstractFloat(ex)
+    value isa Real || throw(InexactError(nameof(T), T, ex))
+    return value
+end
+
+(::Type{T})(ex::GiacExpr) where {T<:AbstractFloat} = T(_real_value(T, ex))
+
+# `precision` is the point of a `BigFloat`, so take the keyword Base takes.
+Base.BigFloat(ex::GiacExpr; precision::Integer = Base.MPFR.DEFAULT_PRECISION[]) =
+    BigFloat(_real_value(BigFloat, ex); precision = precision)
+
+Base.convert(::Type{T}, ex::GiacExpr) where {T<:AbstractFloat} = T(ex)
+Base.convert(::Type{AbstractFloat}, ex::GiacExpr) = AbstractFloat(ex)
+
 
 # ============================================================================
 # Scalar Conversion Helpers
@@ -387,10 +532,69 @@ function Base.convert(::Type{Float64}, g::GiacExpr)::Float64
     elseif t == FRAC
         r = _convert_to_rational(g)
         return Float64(r)
+    elseif is_constant(g)
+        Float64(to_julia(g))
     else
-        throw(MethodError(convert, (Float64, g)))
+        # Symbolic constants, `sqrt(2)`, the non-finite atoms: `AbstractFloat`
+        # handles these, and it would be odd for `convert` to refuse what
+        # `float` accepts. It raises `ArgumentError` for genuinely symbolic
+        # input, where this used to raise `MethodError`.
+        return Float64(AbstractFloat(g))
     end
 end
+
+# ============================================================================
+# Numeric constructors
+#
+# `convert(T, ::GiacExpr)` was written for a handful of concrete targets and
+# the matching constructors never were, so `convert(Int64, g)` worked while
+# `Int64(g)` raised MethodError — and `convert` does not fall back to a
+# constructor for a user type, so neither direction filled the other in.
+#
+# These delegate to the `convert` methods wherever one exists, so nothing
+# about the existing behaviour changes, refusals included.
+# ============================================================================
+
+"""
+    Integer(g::GiacExpr) -> Union{Int64,BigInt}
+
+The integer behind an integer `GiacExpr`, staying `BigInt` when it does not
+fit a machine word. `Int64(g)`, `Int32(g)`, `BigInt(g)` and the rest narrow
+this, raising `InexactError` when the value does not fit the requested type.
+"""
+function Base.Integer(g::GiacExpr)
+    t = giac_type(g)
+    t == INT && return _convert_to_int64(g)
+    t == ZINT && return _convert_to_bigint(g)
+    throw(MethodError(Integer, (g,)))
+end
+
+# `Bool` is an `Integer` but is neither `Signed` nor `Unsigned`, which keeps
+# it out of this and with the `convert(Bool, ...)` already defined below.
+(::Type{T})(g::GiacExpr) where {T<:Union{Signed,Unsigned}} = T(Integer(g))
+
+Base.convert(::Type{T}, g::GiacExpr) where {T<:Union{Signed,Unsigned}} = T(g)
+Base.convert(::Type{Integer}, g::GiacExpr) = Integer(g)
+
+"""
+    Rational(g::GiacExpr) -> Rational
+
+The rational behind a fraction or an integer `GiacExpr`.
+"""
+Base.Rational(g::GiacExpr) = convert(Rational, g)
+(::Type{Rational{T}})(g::GiacExpr) where {T<:Integer} =
+    convert(Rational{T}, convert(Rational, g))
+Base.convert(::Type{Rational{T}}, g::GiacExpr) where {T<:Integer} = Rational{T}(g)
+
+"""
+    Complex(g::GiacExpr) -> Complex
+
+The complex behind a `CPLX` `GiacExpr`; a real numeric one widens.
+"""
+Base.Complex(g::GiacExpr) = convert(Complex, g)
+(::Type{Complex{T}})(g::GiacExpr) where {T<:Real} =
+    convert(Complex{T}, convert(Complex, g))
+Base.convert(::Type{Complex{T}}, g::GiacExpr) where {T<:Real} = Complex{T}(g)
 
 """
     Base.convert(::Type{Vector}, g::GiacExpr) -> Vector

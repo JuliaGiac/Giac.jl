@@ -7,6 +7,406 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **The SymPy bridge is tested by its own CI job, not by the main matrix.**
+  `SymPy.jl` reaches Python through PyCall, so `GiacSymPyExt` cannot
+  precompile unless the Python `sympy` module is importable. With `SymPy` in
+  the `test` target, every cell of the main matrix failed at precompile time
+  over a missing Python package — including `Symbolics -> SymbolicsSymPyExt`,
+  which is not this package's extension at all.
+
+  `SymPy` is out of the `test` target, and `.github/workflows/CI-SymPy.yml`
+  provisions Python (`PYTHON: ""`, so PyCall uses its own Conda interpreter
+  and SymPy.jl installs the module it needs) and runs
+  `test/test_sympy_conversion.jl` standalone. This follows the LibPARI bridge
+  job, with one deliberate difference: LibPARI is *also* covered by the main
+  matrix, and SymPy is not.
+
+  That job also collects and uploads coverage, which the LibPARI one does not
+  need to: LibPARI is in the `test` target and the matrix covers it, whereas
+  moving SymPy out would otherwise report the extension's lines as entirely
+  unhit.
+
+  `test/test_sympy_conversion.jl` gained its own `using Test` and `using Giac`.
+  It had been relying on `runtests.jl` to load them, which would have made the
+  standalone job fail before its first assertion.
+
+### Added
+
+- **`Differential` operator** (spec 068): canonical SciML/ModelingToolkit-style
+  partial-differentiation operator. `Differential(x)(f)` for a declared function
+  `f(x, y)` returns a `DerivativeExpr` representing `∂f/∂x`. Composition handles
+  cross and higher-order partials: `Differential(y)(Differential(x)(f))` is
+  `∂²f/∂y∂x` (right-to-left Leibniz convention — see *Fixed* below);
+  `Differential(x)(Differential(x)(f))` is `∂²f/∂x²` (adjacent same-variable
+  steps collapse). Mono-variable functions also work: `Differential(t)(u)`.
+- **Symbolics-compatible algebraic surface on `Differential`**:
+  `Differential(t)^n` for `n ≥ 0` returns an order-`n` operator —
+  `Differential(t)^2 === Differential(t, 2)` and `Differential(t)^0 === identity`,
+  matching Symbolics.jl. `Differential * Differential` composes via Julia's
+  generic `∘`, so `(Differential(y) * Differential(x))(f) ==
+  (Differential(y) ∘ Differential(x))(f) == Differential(y)(Differential(x)(f))`.
+- **`expand_derivatives`** (Symbolics.jl parity): forces evaluation of a
+  `DerivativeExpr` to a plain `GiacExpr` (delegates to GIAC's `diff`), and is
+  the identity on any other value. Lets code written in the Symbolics.jl style
+  (`expand_derivatives(Differential(x)(expr))`) run unchanged on Giac.jl. Note
+  that Giac.jl's bare-expression branch already evaluates eagerly, so the
+  no-op fallback covers the common case.
+- **Two-argument `Differential(var, n)` shorthand**: `Differential(x, 2)(f)`
+  is exactly equivalent to `Differential(x)(Differential(x)(f))`, matching
+  Symbolics.jl's `Differential(x, 2)` form. The default `Differential(var)`
+  is `Differential(var, 1)`. Applies uniformly to function-form and
+  bare-expression operands.
+- **Bare-expression differentiation** via `Differential` (spec 068):
+  `Differential(x)(x^2 + y*x)` returns the plain `GiacExpr` `2*x + y`,
+  matching SymPy.jl's `diff(expr, var)` and Symbolics.jl's `Differential`.
+- **Multi-variable partial derivative support**: `DerivativeExpr` now records
+  an ordered sequence of `(variable, order)` differentiation steps, enabling
+  cross partials and arbitrary-depth composition. The single-step case is the
+  original mono-variable behavior.
+- **Math-convention `n`-th derivative display**: high-order derivatives
+  (`n ≥ 4`) now render with parenthesized superscript notation in `Base.show`
+  rather than long strings of primes. So `D(u, 5)` displays as `D: u⁽⁵⁾(t)`
+  (instead of `D: u'''''(t)`). The same applies to `DerivativePoint` display.
+  `Base.string` for `DerivativePoint` keeps prime notation regardless of order
+  because GIAC consumes prime-form initial-condition strings.
+- See `docs/migration/d_to_differential.md` for a full mapping table from the
+  deprecated `D` shapes to `Differential`.
+- **`examples/07_odes_pdes.jl`**: new Pluto notebook walking through symbolic
+  ODE solutions (first-order, harmonic, damped, third-order, RLC, forced) and
+  PDE expressions (heat, wave, transport, separation of variables for the heat
+  equation) using the canonical `Differential` operator. Linked from
+  `docs/src/pluto.md`.
+
+### Deprecated
+
+- **`D` operator** (spec 068): every call shape (`D(u)`, `D(u, n)`, `D(D(u))`,
+  `D(d::DerivativeExpr, n)`) now emits a one-time-per-call-site
+  `Base.depwarn` pointing to the `Differential` replacement. `D` will be
+  removed in the next published release. The multi-arg ambiguity case
+  (`D(f)` on `f(x, y)`) raises `ArgumentError` instead of warning, since
+  the previous silent-default-to-first-variable behavior was a correctness
+  hazard. The `D(d::DerivativeExpr)` chained call also now requires the
+  underlying derivative to be mono-variable; partial derivatives of mixed
+  variables must be composed via `Differential(var)(d)`.
+
+### Changed
+
+- **`DerivativeExpr` internal layout** (spec 068): the `varname::String` and
+  `order::Int` fields are replaced by `steps::Vector{Tuple{String, Int}}`.
+  This is an internal change — no user code is expected to construct
+  `DerivativeExpr` directly. Public arithmetic (`+`, `-`, `*`, `/`, `^`),
+  equation (`~`), and string-conversion behavior is preserved.
+
+
+### Added
+
+- **`GiacSymPyExt` implements bidirectional Giac ↔ SymPy conversion**
+  (080-sympy-bridge): the Giac.jl ↔ SymPy.jl bridge now converts in both
+  directions via direct C++ Gen tree traversal (no string serialization):
+  - `to_sympy(::GiacExpr)` → `SymPy.Sym`: preserves symbolic functions
+    (`sin`, `cos`, `exp`, `sqrt`, `ln` → `log`, …), rational/complex numbers,
+    arbitrary-precision integers, and maps GIAC constants to SymPy
+    (`pi` → `SymPy.PI`, `e` → `SymPy.E`, `i` → `SymPy.IM`).
+  - `to_giac(::SymPy.Sym)` → `GiacExpr`: rebuilds SymPy's internal form back
+    to GIAC idioms (`Pow(x, 1/2)` → `sqrt(x)`, `Mul(x, Pow(y, -1))` → `x/y`,
+    SymPy singletons `Zero`/`One`/`NegativeOne`/`Half` → GIAC literals,
+    `log` → `ln`, `PI`/`E`/`I` → `pi`/`e`/`i`). Arbitrary-precision integers
+    are transferred via direct GMP binary access.
+  The extension loads automatically when `SymPy` is loaded alongside `Giac`.
+  Non-scalar SymPy matrices are refused with an `ErrorException`.
+
+- **`SECURITY.md`**, a reporting channel and an honest account of what
+  `giac_eval` exposes, plus a short notice in the README. Every claim in it was
+  checked against the `GIAC_jll` this package requires rather than taken from
+  the Giac sources:
+
+  * `secure_run` is active — `cd`, `write`, `fopen` and `archive` all raise
+    `Running in secure mode`, and no file is created. `system()` is not
+    defined as a Giac command on standard builds; `system("id")` stays inert.
+  * **`open` differs by platform**: it reports secure mode on Linux and macOS
+    but not on Windows. Found by CI rather than assumed. No file appears on
+    any platform, which is the property the suite asserts everywhere; the
+    message is asserted only where it holds.
+  * **The `read*` family is not guarded.** `read16` returns the bytes of any
+    readable file. `read` opens the file too but evaluates it as Giac source
+    rather than returning it — a distinction worth stating precisely, since
+    both are often described as "reads a file". Upstream gap; the fix is two
+    lines in Giac's `_read`.
+  * Giac's timeout does abort a runaway computation, **but cannot be used
+    in-process**: once it fires the interrupt state is process-wide and
+    sticky, every later evaluation raises, and neither `restart` nor a fresh
+    `GiacContext` recovers it. That is why no convenience wrapper for it is
+    exported — an API whose success leaves the library unusable is a trap.
+
+- **`test/test_security.jl`** asserts the posture on every run, so a libgiac
+  built without `secure_run` fails the suite instead of shipping quietly. The
+  unguarded `read*` behaviour is pinned too: if it starts failing, Giac has
+  been fixed upstream and the document needs updating.
+
+### Fixed
+
+- **`GiacContext` now isolates evaluations.** The type has always been public
+  and `giac_eval(expr, ctx)` has always taken one, but the context was
+  ignored: every evaluation funnelled into a single process-wide
+  `giac::context`, so a `:=` binding made through one context was visible from
+  every other and from the default.
+
+  ```julia
+  c1, c2 = GiacContext(), GiacContext()
+  giac_eval("zz := 7", c1)
+  giac_eval("zz", c1)   # 7
+  giac_eval("zz", c2)   # zz   — was 7
+  giac_eval("zz")       # zz   — was 7
+  ```
+
+  The wrapper gained the entry point for this in
+  [libgiac-julia-wrapper#4](https://github.com/JuliaGiac/libgiac-julia-wrapper/pull/4),
+  closing its issue #3; this is what makes it reach users. Note which overload
+  is needed: `giac_eval(ctx, str)` returns a `std::string` and loses the gen,
+  `giac_eval(str, ctx)` returns a `Gen`.
+
+  `GiacContext()` now owns a `giac::context` and releases it through its
+  finalizer.
+
+  **The default context deliberately keeps the old behaviour.** Anything that
+  does not name a context shares one process-wide context, because the tier-1
+  paths, introspection and the conversion helpers re-parse printed expressions
+  through the context-free entry point — moving the default would split the
+  package in two.
+
+  **Known limitation.** A `GiacExpr` carries its gen, not the context that
+  produced it, so an operation that re-parses it resolves free identifiers
+  against the *default* context:
+
+  ```julia
+  giac_eval("ww := 100")              # default
+  c = GiacContext()
+  giac_eval("ww := 7", c)             # isolated
+
+  giac_eval("ww + x", c)              # 7+x   — Giac substitutes eagerly, fine
+  f = giac_eval("quote(ww) + x", c)   # ww+x  — the identifier survives
+  simplify(f)                          # x+100 — resolved against the default
+  ```
+
+  The scope is narrow, since eager substitution means an identifier rarely
+  survives evaluation, but the failure is silent rather than an error. Lifting
+  it means making `GiacExpr` carry its context and removing the string round
+  trip from the tier-1 paths — the same work, not a follow-up patch.
+
+- **`GiacMCPExt` honours its own contract.** Its tool description says "each
+  call is independent — variable bindings (a := 5) do NOT persist across
+  calls", which one shared context could not deliver; a user binding leaked
+  into later calls. Each call now evaluates in a fresh `GiacContext`.
+
+- **`to_julia` no longer drops four digits from a symbolic constant.**
+
+  ```julia
+  to_julia(giac_eval("pi"))   # was 3.14159265359, now 3.141592653589793
+  to_julia(giac_eval("e"))    # was 2.71828182846, now 2.718281828459045
+  ```
+
+  `_convert_by_type` reduces a constant through `evalf` and reads the decimal
+  back. With no digit argument Giac reduces to a `DOUBLE` and prints it at the
+  global `Digits` — 12 — so `sqrt(2)`, `sin(1)` and every recognised constant
+  arrived truncated. Past 15 digits Giac builds a `REAL` instead, whose
+  decimal is faithful, so the call now asks for 18: a `Float64` needs 17 to
+  round-trip, and one more absorbs the double rounding that still costs an ulp
+  on values such as `sqrt(2)` at exactly 17.
+
+  This closes a disagreement introduced by the previous release: `float` was
+  fixed to reduce at 18 digits while `to_julia` was left at the default, so the
+  two gave different answers for the same expression. They now agree, and both
+  agree with Julia's own `sqrt(2.0)`, `sin(1.0)` and friends.
+
+  The issue #19 fixed point is unchanged: `inf`, `-inf` and `undef` are
+  constant by having no free symbols but cannot be reduced, and still come back
+  as `GiacExpr` rather than recursing.
+
+### Added
+
+- **The numeric constructors on `GiacExpr`**: `Integer`, every concrete
+  `Signed`/`Unsigned` width including `BigInt`, `Rational` and
+  `Rational{T}`, `Complex` and `Complex{T}`, plus the `convert` methods that
+  were missing beside them (`convert(Integer, g)`, `convert(BigInt, g)`,
+  `convert(Rational{T}, g)`, `convert(ComplexF64, g)`).
+
+  `convert(T, ::GiacExpr)` had been written for a handful of concrete targets
+  and the matching constructors never were, so `convert(Int64, g)` worked
+  while `Int64(g)` raised `MethodError`. `convert` does not fall back to a
+  constructor for a user type, so neither direction filled the other in. This
+  is the same gap the float family had before v0.14.4.
+
+  Purely additive: each constructor delegates to the `convert` that already
+  existed wherever there is one, so nothing changes about what is accepted or
+  how a refusal is reported.
+
+  * `Integer(g)` yields `Int64` or `BigInt` by magnitude, so
+    `Integer(giac_eval("2^200"))` stays exact; narrowing that to `Int64`
+    raises `InexactError` rather than wrapping.
+  * `Bool` is an `Integer` in Julia but neither `Signed` nor `Unsigned`,
+    which keeps it out of the parametric constructor and with the
+    `convert(Bool, ::GiacExpr)` that already handled it.
+
+### Added
+
+- **`AbstractFloat(::GiacExpr)`**, and with it `float`. Only the constructor
+  is declared: `Base.float(x) = AbstractFloat(x)` is defined on `Any` rather
+  than on `Number` (`base/float.jl`), so `float` follows even though
+  `GiacExpr` is not a `Number` — and code reaching for the constructor is
+  served too, which a bare `float` method would miss.
+
+  Integers and hardware floats land on `Float64`, big integers and MPFR
+  `REAL`s on `BigFloat`, `CPLX` on `Complex`, and a vector maps elementwise.
+  Giac's non-finite atoms map to `Inf`, `-Inf` and `NaN`; anything carrying a
+  free symbol, and anything that is not a number, raises `ArgumentError`.
+
+  Two details worth stating, because the obvious implementations get them
+  wrong:
+
+  * A `REAL` keeps the precision its own decimal carries. Giac prints a
+    `REAL` at the value's own precision, so `parse(BigFloat, string(ex))`
+    alone would round it to the ambient `precision(BigFloat)` — 78 digits by
+    default, whatever Giac computed.
+  * The symbolic branch reduces through `evalf(ex, 18)`, not 16. A `Float64`
+    needs 17 digits to round-trip, and rounding the exact value to 17 first
+    still costs an ulp on values such as `sqrt(2)`: at 16 digits, 8 of 19
+    tested values disagreed with Julia's own; at 18, none do.
+
+- **The concrete float constructors**, and the `convert` methods to match:
+  `Float64(::GiacExpr)`, `BigFloat(::GiacExpr)`, any `T<:AbstractFloat`
+  through one parametric constructor, plus `convert(T, ::GiacExpr)` and
+  `convert(AbstractFloat, ::GiacExpr)`. `convert(Float64, ::GiacExpr)`
+  already existed; the constructors did not, so `convert` worked where
+  `Float64(g)` raised `MethodError`.
+
+  A value that is not a single real number raises `InexactError` rather than
+  silently yielding a part of itself — `Float64(giac_eval("2 + 3i"))` and
+  `Float64(giac_eval("[1,2]"))` both refuse.
+
+### Changed
+
+- **`convert(Float64, ::GiacExpr)` accepts what `float` accepts.** It covered
+  `INT`, `ZINT`, `DOUBLE`, `REAL` and `FRAC` and refused the rest, so it and
+  `float` disagreed on `pi`, `e`, `sqrt(2)` and the non-finite atoms. It now
+  falls back to `AbstractFloat`. For genuinely symbolic input it raises
+  `ArgumentError`, where it used to raise `MethodError`.
+
+### Fixed
+
+- **`LibPARI.pari` no longer raises on a Giac-native `REAL`.**
+  `GiacLibPARIExt` recovers a `REAL`'s bit width by searching for the width
+  whose re-encoding reproduces Giac's printed decimal character for
+  character. That verification goes back out through `string(::BigFloat)`,
+  which renders MPFR's *shortest round-tripping* decimal — a different
+  decimal from Giac's own fixed-digit rendering of the same bits:
+
+  ```julia
+  julia> r = Giac.Commands.evalf(giac_eval("pi"), 20);
+
+  julia> string(r)                       # Giac's rendering
+  "3.1415926535897932385"
+
+  julia> setprecision(() -> string(parse(BigFloat, string(r))), BigFloat, 62)
+  "3.1415926535897932383"                # MPFR's, for the same 62 bits
+  ```
+
+  The two forms agree for any `REAL` that reached Giac *through* Julia, which
+  is every value the suite covered, so the gap went unnoticed. For a `REAL`
+  Giac built itself with `evalf(x, d)` they differ, no width verified, and
+  the search raised: `LibPARI.pari(Giac.Commands.evalf(giac_eval("pi"), 100))`
+  threw an `ArgumentError` inviting a bug report.
+
+  The search is unchanged where it closes. Where it does not, the bridge now
+  falls back to the narrowest width that holds every digit Giac printed —
+  never fewer, so nothing Giac showed is dropped. What a printed decimal
+  cannot carry is Giac's internal width, and the wrapper exposes no accessor
+  for it: `get_precision` takes a `GiacContext`, not a `Gen`, and is the
+  global `Digits`. Covered by tests over `evalf` at 20, 30, 50, 75 and 100
+  digits, alongside the existing PARI-origin widths.
+
+- **Reals now cross faithfully on Windows.** Two independent upstream defects
+  had to be fixed before an MPFR value could survive the crossing; neither is
+  in Giac.jl, and fixing only the first left the symptom unchanged. Surfaced
+  by [#22](https://github.com/JuliaGiac/Giac.jl/pull/22) and diagnosed with
+  the probe in [#26](https://github.com/JuliaGiac/Giac.jl/pull/26).
+
+  **1 — the type tag.** `class gen` stored its type tag as a bitfield
+  (`unsigned char type:5; unsigned char type_unused:3;`). GCC fuses adjacent
+  bitfield writes into one wider store and picks the bit placement in a
+  version-dependent way, so `GIAC_jll` (built with GCC 8) and
+  `libgiac_julia_jll` (GCC 10) disagreed about which bits held `type`:
+  libgiac wrote a gen tagged `_REAL`, the wrapper read back `_DOUBLE_`.
+  Every MPFR value therefore reached Julia truncated to twelve significant
+  digits on Windows — identically at 64, 128, 256, 512 and 1024 bits, since
+  53 bits is all a mis-tagged `DOUBLE` ever had.
+  [Yggdrasil#13717](https://github.com/JuliaPackaging/Yggdrasil/pull/13717)
+  ships `GIAC_jll` v2.0.2 with `GIAC_TYPE_ON_8BITS=1` — `type` becomes a
+  plain byte at offset 0, a layout no compiler can rearrange — and aligns
+  `preferred_gcc_version` with the wrapper's;
+  [Yggdrasil#14478](https://github.com/JuliaPackaging/Yggdrasil/pull/14478)
+  rebuilds `libgiac_julia_jll` as v0.5.1 against it.
+
+  **2 — the MinGW decimal parser.** With the tag corrected, Windows still
+  truncated. GIAC guarded the MPFR branch of `chartab2gen` with
+  `#if !defined __MINGW_H && defined HAVE_LIBMPFR`, so under MinGW it never
+  parsed a decimal literal into an MPFR real and fell back to `strtod` — a
+  `double`. Since `convert(GiacExpr, ::BigFloat)` reaches GIAC through
+  `giac_eval(string(x))`, every wide real entering Giac.jl on Windows was
+  rebuilt from 53 bits. The signature differs from defect 1: the tag now
+  reads `REAL`, but the width comes back 64 whatever was asked for.
+  [Yggdrasil#14776](https://github.com/JuliaPackaging/Yggdrasil/pull/14776)
+  ships `GIAC_jll` v2.0.3 with the guard corrected, and
+  [Yggdrasil#14781](https://github.com/JuliaPackaging/Yggdrasil/pull/14781)
+  rebuilds `libgiac_julia_jll` as v0.5.2 against it.
+
+  The `@test_broken` markers that guarded the affected `GiacLibPARIExt`
+  assertions on Windows are gone; those assertions are now plain `@test` on
+  every platform, so a regression fails the suite instead of hiding in it.
+  Both `windows-latest` jobs are green on the JLL pair this release requires.
+
+### Changed
+
+- **`[compat]` requires the fixed binaries**: `GIAC_jll` `"2.0.1"` →
+  `"2.0.3"` and `libgiac_julia_jll` `"0.5"` → `"0.5.2"`. Necessary, not
+  cosmetic — `libgiac_julia_jll` is a CxxWrap shim bound to exactly one GIAC
+  ABI, and every earlier pair carries at least one of the two defects above.
+  `libcxxwrap_julia_jll` moves `"0.14.9"` → `"0.14.10"` to match what the
+  wrapper itself requires; only 0.14.10+ ships artifacts for Julia 1.13/1.14,
+  so this is also what lets Giac.jl load there rather than failing with "GIAC
+  wrapper library not found".
+
+  `GIAC_jll` v2.0.2 additionally enables GSL, LAPACK (via `OpenBLAS32_jll`),
+  GLPK and PARI in the GIAC build, which were all disabled in v2.0.1.
+### Added
+
+- **`GiacNemoExt` bidirectional bridge to Nemo.jl** (081-nemo-oscar-bridge):
+  a package extension (loaded automatically when `Nemo` is loaded alongside
+  `Giac`) providing two entry points, modelled on the LibPARI bridge:
+  - `Giac.to_giac(::Nemo.RingElem)` — Nemo → Giac (outward). Supports
+    `ZZRingElem`, `QQFieldElem`, univariate polynomials over `ZZ`/`QQ`,
+    `FqFieldElem` (prime & non-prime), `AbsSimpleNumFieldElem`, and
+    `ZZMatrix`/`QQMatrix`. Arbitrary-precision integers are preserved as
+    `ZINT`; number-field elements are rebuilt already reduced mod their
+    defining polynomial.
+  - `Giac.to_nemo(::GiacExpr, parent)` — Giac → Nemo (inward). The caller
+    supplies the destination parent ring (`ZZ`, `QQ`, a univariate
+    `PolyRing`, an `AbsSimpleNumField`, an `FqField`, or a `MatSpace`),
+    because Nemo elements are parent-typed while a `GiacExpr` is an untyped
+    symbolic tree.
+  Round trips are value-preserving, not representation-preserving:
+  factored Giac forms arrive in Nemo expanded; variable names survive both
+  crossings, term order does not. Compare with `==`, never `string`.
+
+  Documented refusals (v1): transcendental functions (`sin`, `cos`, `exp`,
+  `ln`, `sqrt`, `log10`, …), the constants `pi`/`e`, real/complex balls
+  (`ArbFieldElem`/`AcbFieldElem`), p-adics, non-integer rationals into `ZZ`,
+  and multivariate polynomials. Reals are refused to avoid silent precision
+  loss via a printed decimal (the same trap the LibPARI bridge warns about).
+  Full mapping table, refusal list and limitations in
+  `docs/src/extensions/nemo.md`. `Nemo = "0.56"` compat.
+
 ## [0.14.3] - 2026-08-07
 
 ### Changed
@@ -276,6 +676,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `latex(ifactor(360))` → `"5\cdot 2^{3}\cdot 3^{2}"`. Every other command
   keeps GIAC's normal evaluation semantics. Reported by
   [@kahliburke](https://github.com/kahliburke).
+
+### Fixed
+
+- **Partial-derivative pretty-print convention (right-to-left Leibniz)**: the
+  multi-step `Base.show` for `DerivativeExpr` previously printed
+  `Differential(y)(Differential(x)(f))` as `D: ∂²f/∂x∂y`, which is consistent
+  with the index/`f_{xy}` convention but inconsistent with the operator-product
+  reading `(∂/∂y)(∂/∂x)f = ∂²f/∂y∂x`. The display now uses the right-to-left
+  Leibniz convention — the **rightmost** variable in `∂ⁿf/∂v₁…∂vₙ` is applied
+  **first**, the leftmost last — so the same expression now prints as
+  `D: ∂²f/∂y∂x`. The `steps` field (innermost-first) and the GIAC-side
+  `diff(diff(f(x,y),x),y)` string are unchanged; only the human-facing
+  ∂-notation flips. By Schwarz/Clairaut the underlying value is symmetric
+  for sufficiently smooth functions, so this is purely a notation fix.
 
 ## [0.14.1] - 2026-05-11
 

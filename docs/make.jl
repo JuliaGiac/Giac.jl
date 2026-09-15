@@ -1,5 +1,5 @@
 using Documenter
-using DocumenterMermaid
+using DocumenterLandingPage
 using Giac
 # Note: Giac.Commands is not imported here because it has ~2000 auto-generated
 # command functions. Their usage is documented in commands_submodule.md.
@@ -39,12 +39,17 @@ _pages = [
     ],
     "Held Commands" => "held_commands.md",
     "Tables.jl Compatibility" => "tables.md",
+    "Migration" => [
+        "D → Differential" => "migration/d_to_differential.md",
+    ],
     "Extensions" => [
          "Symbolics.jl" => "extensions/symbolics.md",
+         "SymPy.jl" => "extensions/sympy.md",
          "MathJSON.jl" => "extensions/mathjson.md",
          "MCP Server" => "extensions/mcp.md",
          "TermInterface.jl" => "extensions/terminterface.md",
          "LibPARI.jl" => "extensions/libpari.md",
+         "Nemo.jl" => "extensions/nemo.md",
     ],
     "Developer Guide" => [
         "Overview" => "developer/index.md",
@@ -107,17 +112,22 @@ end
 makedocs(
     sitename = "Giac.jl",
     doctest = true,
+    repo = Documenter.Remotes.GitHub("JuliaGiac", "Giac.jl"),
     # Note: Giac.Commands is excluded from modules because it has ~2000 auto-generated
     # command functions that aren't individually documented (usage is documented in
     # commands_submodule.md instead)
     modules = [Giac],
+    plugins = [LandingPage()],
     format = Documenter.HTML(
-        prettyurls = get(ENV, "CI", "false") == "true",
-        canonical = "https://s-celles.github.io/Giac.jl",
+        # Landing-page actions use directory-style URLs (for example
+        # `/quickstart/`), so keep the same URL layout locally and in CI.
+        prettyurls = true,
+        canonical = "https://JuliaGiac.github.io/Giac.jl",
         # api/core.md legitimately exceeds the 100 KiB soft threshold: it carries
         # the full core-API docstring set plus worked examples. Ignoring it here
         # is Documenter's own recommended alternative to raising the general limit.
         size_threshold_ignore = ["api/core.md"],
+        assets = ["assets/custom-mermaid.js"],
     ),
     pages = _pages,
     checkdocs = :exports,
@@ -126,6 +136,6 @@ makedocs(
 )
 
 deploydocs(
-    repo = "github.com/s-celles/Giac.jl.git",
+    repo = "github.com/JuliaGiac/Giac.jl.git",
     devbranch = "main",
 )

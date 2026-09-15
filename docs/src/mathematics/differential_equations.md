@@ -1,43 +1,46 @@
 # Differential Equations
 
-Giac.jl provides symbolic solving of ordinary differential equations (ODEs) using GIAC's `desolve` command. The package includes a `D` operator following SciML/ModelingToolkit conventions for expressing derivatives naturally.
+Giac.jl provides symbolic solving of ordinary differential equations (ODEs) using GIAC's `desolve` command. The package includes a `Differential` operator following SciML/ModelingToolkit conventions for expressing derivatives naturally, plus a deprecated `D` alias kept during the transition window.
 
-## The D Operator
+## The `Differential` Operator
 
-The `D` operator provides a clean, Julian syntax for expressing derivatives:
+`Differential(var)` is the canonical, SciML-style partial-differentiation operator. It captures a single variable and is applied as a callable. For a mono-variable function declared with `@giac_var t u(t)`, `Differential(t)(u)` represents `u'(t)`. Repeated application gives higher orders; mixed variables compose for partial derivatives. See [Calculus](calculus.md) for a multi-variable walkthrough.
 
 ```julia
 using Giac
 using Giac.Commands: desolve
 
 @giac_var t u(t)
+Dt = Differential(t)
 
-# Create derivative expressions
-D(u)        # First derivative u'
-D(D(u))     # Second derivative u'' (chained)
-D(u, 2)     # Second derivative u'' (direct)
-D(u, 3)     # Third derivative u'''
+Dt(u)              # u'(t)
+Dt(Dt(u))          # u''(t)  (adjacent same-var steps collapse)
 ```
 
-### Comparison with Raw Syntax
+### Comparison with raw GIAC syntax
 
-| D Operator | Raw GIAC | Description |
-|------------|----------|-------------|
-| `D(u)` | `diff(u, t)` | First derivative |
-| `D(D(u))` | `diff(diff(u, t), t)` | Second derivative (chained) |
-| `D(u, 2)` | `diff(u, t, 2)` | Second derivative (direct) |
-| `D(u)(0) ~ 1` | `"u'(0)=1"` | Initial condition for u'(0) |
+| `Differential` form | Raw GIAC | Description |
+|---|---|---|
+| `Differential(t)(u)` | `diff(u(t), t)` | First derivative |
+| `Differential(t)(Differential(t)(u))` | `diff(u(t), t, 2)` | Second derivative |
+| `Differential(t)(u)(0) ~ 1` | `"u'(0)=1"` | Initial condition for `u'(0)` |
 
 ### Unicode identifiers
 
-Function and variable names may use any Unicode letters that Julia and GIAC
-accept as identifiers — Greek letters, mathematical italics, etc.:
+Function and variable names may use any Unicode letters that Julia and GIAC accept:
 
 ```julia
 @giac_var 𝑧 ϕ(𝑧)
-D(ϕ)        # diff(ϕ(𝑧), 𝑧)
-D(ϕ, 2)     # diff(ϕ(𝑧), 𝑧, 2)
+Dz = Differential(𝑧)
+Dz(ϕ)        # diff(ϕ(𝑧), 𝑧)
+Dz(Dz(ϕ))    # diff(ϕ(𝑧), 𝑧, 2)
 ```
+
+### The deprecated `D` alias
+
+Earlier versions of Giac.jl exposed a `D` operator (e.g. `D(u)`, `D(u, 2)`, `D(D(u))`). `D` is still available during a one-release deprecation window, with each call site emitting a `Base.depwarn` pointing to the canonical replacement. `D` will be removed in the next published release. See [`docs/migration/d_to_differential.md`](../migration/d_to_differential.md) for the full mapping table.
+
+The one `D` call shape that *no longer works* even with a warning: `D(f)` for a multi-argument function like `@giac_var x y f(x, y)` now raises `ArgumentError` instead of silently differentiating against the first variable. Use `Differential(x)(f)` (or `Differential(y)(f)`) explicitly.
 
 ## First-Order ODEs
 
@@ -50,9 +53,10 @@ using Giac
 using Giac.Commands: desolve
 
 @giac_var t u(t) tau U0
+Dt = Differential(t)
 
 # Define ODE: τu' + u = U₀
-ode = tau * D(u) + u ~ U0
+ode = tau * Dt(u) + u ~ U0
 
 # Initial condition: u(0) = 1
 initial = u(0) ~ 1
@@ -66,9 +70,10 @@ result = desolve([ode, initial], t, :u)
 
 ```julia
 @giac_var t V(t) R C Vs
+Dt = Differential(t)
 
 # Capacitor voltage ODE: RC·V' + V = Vs
-ode = R * C * D(V) + V ~ Vs
+ode = R * C * Dt(V) + V ~ Vs
 initial = V(0) ~ 0
 
 result = desolve([ode, initial], t, :V)
@@ -86,25 +91,17 @@ using Giac
 using Giac.Commands: desolve
 
 @giac_var t u(t)
+Dt = Differential(t)
 
-# Define ODE using chained D
-ode = D(D(u)) + u ~ 0
+# Define ODE
+ode = Dt(Dt(u)) + u ~ 0
 
 # Initial conditions
-u0 = u(0) ~ 1      # u(0) = 1
-du0 = D(u)(0) ~ 0  # u'(0) = 0
+u0 = u(0) ~ 1            # u(0) = 1
+du0 = Dt(u)(0) ~ 0       # u'(0) = 0
 
 # Solve
 result = desolve([ode, u0, du0], t, :u)
-# Returns: cos(t)
-```
-
-### Alternative Syntax with D(u, 2)
-
-```julia
-# Same ODE using direct order specification
-ode = D(u, 2) + u ~ 0
-result = desolve([ode, u(0) ~ 1, D(u)(0) ~ 0], t, :u)
 # Returns: cos(t)
 ```
 
@@ -114,9 +111,10 @@ Solve `u'' + 2ζω₀u' + ω₀²u = 0`:
 
 ```julia
 @giac_var t u(t) zeta omega0
+Dt = Differential(t)
 
-ode = D(u, 2) + 2*zeta*omega0*D(u) + omega0^2*u ~ 0
-result = desolve([ode, u(0) ~ 1, D(u)(0) ~ 0], t, :u)
+ode = Dt(Dt(u)) + 2*zeta*omega0*Dt(u) + omega0^2*u ~ 0
+result = desolve([ode, u(0) ~ 1, Dt(u)(0) ~ 0], t, :u)
 ```
 
 ## Third-Order ODEs
@@ -128,34 +126,36 @@ using Giac
 using Giac.Commands: desolve
 
 @giac_var t y(t)
+Dt = Differential(t)
 
 # Define ODE
-ode = D(y, 3) - y ~ 0
+ode = Dt(Dt(Dt(y))) - y ~ 0
 
 # Initial conditions
 y0 = y(0) ~ 1
-dy0 = D(y)(0) ~ 1
-d2y0 = D(y, 2)(0) ~ 1
+dy0 = Dt(y)(0) ~ 1
+d2y0 = Dt(Dt(y))(0) ~ 1
 
 # Solve
 result = desolve([ode, y0, dy0, d2y0], t, :y)
 # Returns: exp(t)
 ```
 
-## Using D in ODE Expressions
+## Using `Differential` in ODE Expressions
 
-The `D` operator supports arithmetic operations, making it natural to build ODE expressions:
+The `Differential` operator's result type supports arithmetic, making it natural to build ODE expressions:
 
 ```julia
 @giac_var t u(t) a b c
+Dt = Differential(t)
 
 # Build complex ODE expressions
-ode1 = D(D(u)) + a*D(u) + b*u ~ c
-ode2 = D(u, 2) - 4*D(u) + 4*u ~ 0
+ode1 = Dt(Dt(u)) + a*Dt(u) + b*u ~ c
+ode2 = Dt(Dt(u)) - 4*Dt(u) + 4*u ~ 0
 
 # Combine with other GiacExpr
 forcing = sin(t)
-ode3 = D(D(u)) + u ~ forcing
+ode3 = Dt(Dt(u)) + u ~ forcing
 ```
 
 ## Important Notes
@@ -172,14 +172,17 @@ desolve([ode, u(0) ~ 1], t, :u)
 desolve([ode, u(0) ~ 1], t, u)  # May not work as expected
 ```
 
-### Initial Conditions with D
+### Initial Conditions with `Differential`
 
-The `D(u)(0)` syntax creates an unevaluated derivative condition that GIAC interprets correctly:
+The `Differential(t)(u)(0)` syntax creates an unevaluated derivative condition that GIAC interprets correctly:
 
 ```julia
-D(u)(0) ~ 1      # Creates "u'(0)=1" for GIAC
-D(u, 2)(0) ~ 0   # Creates "u''(0)=0" for GIAC
+Dt = Differential(t)
+Dt(u)(0) ~ 1            # Creates "u'(0)=1" for GIAC
+Dt(Dt(u))(0) ~ 0        # Creates "u''(0)=0" for GIAC
 ```
+
+This works because the underlying `DerivativeExpr` is mono-variable. Point-evaluation syntax for partial derivatives of multi-variable functions (e.g. PDE boundary conditions) is not supported in this release; see spec 068 Open Questions for the planned path.
 
 ### Systems of ODEs
 
@@ -187,9 +190,10 @@ GIAC can solve systems of first-order ODEs:
 
 ```julia
 @giac_var t x(t) y(t)
+Dt = Differential(t)
 
 # dx/dt = y, dy/dt = -x
-sys = [D(x) ~ y, D(y) ~ -x]
+sys = [Dt(x) ~ y, Dt(y) ~ -x]
 initial = [x(0) ~ 1, y(0) ~ 0]
 
 # Solve as a system (pass both variables)
@@ -204,9 +208,10 @@ Model radioactive decay: `dN/dt = -λN`
 
 ```julia
 @giac_var t N(t) lambda N0
+Dt = Differential(t)
 
 # Decay equation
-ode = D(N) + lambda * N ~ 0
+ode = Dt(N) + lambda * N ~ 0
 initial = N(0) ~ N0
 
 result = desolve([ode, initial], t, :N)
@@ -219,8 +224,9 @@ Exponential growth model: `dP/dt = rP`
 
 ```julia
 @giac_var t P(t) r P0
+Dt = Differential(t)
 
-ode = D(P) - r * P ~ 0
+ode = Dt(P) - r * P ~ 0
 initial = P(0) ~ P0
 
 result = desolve([ode, initial], t, :P)
@@ -233,8 +239,9 @@ Temperature change: `dT/dt = -k(T - T_env)`
 
 ```julia
 @giac_var t T(t) k T_env T0
+Dt = Differential(t)
 
-ode = D(T) + k * (T - T_env) ~ 0
+ode = Dt(T) + k * (T - T_env) ~ 0
 initial = T(0) ~ T0
 
 result = desolve([ode, initial], t, :T)
@@ -249,8 +256,10 @@ result = desolve([ode, initial], t, :T)
 ## API Reference
 
 ```@docs
+Differential
 D
 DerivativeExpr
 DerivativePoint
 DerivativeCondition
+expand_derivatives
 ```
