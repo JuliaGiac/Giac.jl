@@ -383,6 +383,13 @@ Uses Tier 1 C++ wrapper for high performance.
 Base.sqrt(expr::GiacExpr)::GiacExpr = _tier1_or_fallback(_giac_sqrt_tier1, :sqrt, expr)
 
 """
+    Base.cbrt(expr::GiacExpr) -> GiacExpr
+
+Compute the cube root of a GiacExpr.
+"""
+Base.cbrt(expr::GiacExpr)::GiacExpr = Commands.surd(expr, 3)
+
+"""
     Base.abs(expr::GiacExpr) -> GiacExpr
 
 Compute the absolute value of a GiacExpr.
@@ -496,3 +503,34 @@ Base.zero(::GiacExpr)::GiacExpr = giac_eval("0")
 Base.zero(::Type{GiacExpr})::GiacExpr = giac_eval("0")
 Base.one(::GiacExpr)::GiacExpr = giac_eval("1")
 Base.one(::Type{GiacExpr})::GiacExpr = giac_eval("1")
+
+# ============================================================================
+# Base Math Fallbacks (Issue #71)
+# ============================================================================
+
+for (fname, expr) in [
+    (:abs2,  :(abs(x)^2)),
+    (:cis,   :(exp(Constants._i[] * x))),
+    (:cispi, :(exp(Constants._i[] * pi * x))),
+    (:expm1, :(exp(x) - 1)),
+    (:sech,  :(1 / cosh(x))),
+    (:csch,  :(1 / sinh(x))),
+    (:coth,  :(1 / tanh(x))),
+    (:asech, :(acosh(1 / x))),
+    (:acsch, :(asinh(1 / x))),
+    (:acoth, :(atanh(1 / x))),
+    (:sinc,  :(sin(pi * x) / (pi * x))),
+    (:mod2pi,:(x - 2 * pi * floor(x / (2 * pi)))),
+]
+    @eval Base.$fname(x::GiacExpr)::GiacExpr = $expr
+end
+
+if isdefined(Base, :fourthroot)
+    Base.fourthroot(x::GiacExpr)::GiacExpr = Commands.surd(x, 4)
+end
+
+Base.hypot(x::GiacExpr, y::GiacExpr)::GiacExpr = sqrt(abs2(x) + abs2(y))
+Base.hypot(x::GiacExpr, y::Number)::GiacExpr = hypot(promote(x, y)...)
+Base.hypot(x::Number, y::GiacExpr)::GiacExpr = hypot(promote(x, y)...)
+
+Base.clamp(x::GiacExpr, lo, hi)::GiacExpr = Commands.min(Commands.max(x, lo), hi)

@@ -1,6 +1,57 @@
-# Giac.jl
+```@raw html
+---
+layout: home
 
-A Julia wrapper for the [Giac](https://www-fourier.ujf-grenoble.fr/~parisse/giac.html) computer algebra system.
+hero:
+  name: Giac.jl
+  text: Symbolic mathematics, naturally in Julia
+  tagline: A fast Julia interface to the Giac computer algebra system, with more than 2,000 commands and integrations across the Julia ecosystem.
+  actions:
+    - theme: brand
+      text: Get started
+      link: /quickstart/
+    - theme: alt
+      text: Install Giac.jl
+      link: /install/
+    - theme: alt
+      text: View on GitHub
+      link: https://github.com/JuliaGiac/Giac.jl
+
+features:
+  - icon: 🧮
+    title: Symbolic algebra
+    details: Factor, expand, simplify, and solve symbolic expressions with Giac's mature computer algebra engine.
+    link: /mathematics/algebra/
+  - icon: ∫
+    title: Calculus
+    details: Differentiate, integrate, compute limits and series, and solve differential equations from Julia.
+    link: /mathematics/calculus/
+  - icon: ⚡
+    title: More than 2,000 commands
+    details: Use generated Julia functions or invoke any Giac command dynamically through one consistent interface.
+    link: /command_discovery_help/
+  - icon: 🧩
+    title: Julia ecosystem integration
+    details: Exchange symbolic expressions with Symbolics.jl and work naturally with Julia functions and types.
+    link: /extensions/symbolics/
+  - icon: 📓
+    title: Pluto-ready
+    details: Explore symbolic mathematics interactively with reactive notebooks and automatic LaTeX rendering.
+    link: /pluto/
+  - icon: 🖥️
+    title: GiacSlate.jl
+    details: Use Giac.jl through its integration with the KaimonSlate interactive computing environment.
+    link: https://juliagiac.github.io/GiacSlate.jl/
+  - icon: 🔧
+    title: Extensible by design
+    details: Connect Giac to MathJSON, Tables, LibPARI, terminal interfaces, and Model Context Protocol tools.
+    link: /extensions/mathjson/
+---
+```
+
+## A Julia interface to Giac
+
+Giac.jl wraps the [Giac](https://www-fourier.ujf-grenoble.fr/~parisse/giac.html) computer algebra system with Julia-native expressions, operations, conversions, and extension points.
 
 ## Features
 
@@ -187,3 +238,4 @@ integrate(exp(x), x, -Inf, 0)    # 1
 - [Giac](https://www-fourier.univ-grenoble-alpes.fr/~parisse/giac.html) - The underlying computer algebra system
 - [libgiac-julia-wrapper](https://github.com/s-celles/libgiac-julia-wrapper) - CxxWrap bindings for Giac
 - [CxxWrap.jl](https://github.com/JuliaInterop/CxxWrap.jl) - C++ wrapper generator for Julia
+- [GiacSlate.jl](https://github.com/JuliaGiac/GiacSlate.jl) - Integrates Giac.jl with KaimonSlate

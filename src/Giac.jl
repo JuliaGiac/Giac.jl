@@ -78,6 +78,9 @@ include("tables.jl")
 include("substitute.jl")
 include("build_function.jl")
 
+# Differential operator (068-multivar-d-operator)
+include("differential.jl")
+
 # GenTypes module - Scoped enum for GIAC types (041-scoped-type-enum)
 include("gen_types.jl")
 
@@ -100,7 +103,12 @@ include("Constants.jl")
 export GiacExpr, GiacContext, GiacMatrix, GiacError, HelpResult, GiacInput
 
 # Derivative operator (035-derivative-operator)
-export D, DerivativeExpr, DerivativePoint, DerivativeCondition
+# Differential is the canonical SciML-style form (068-multivar-d-operator).
+# D is retained as a deprecated alias and will be removed in the next published release.
+export D, Differential, DerivativeExpr, DerivativePoint, DerivativeCondition
+
+# expand_derivatives — Symbolics.jl-compatible no-op / DerivativeExpr forcer.
+export expand_derivatives
 
 # Core functions
 export giac_eval, to_julia, list_commands, help_count
@@ -153,8 +161,8 @@ using .Commands: invoke_cmd
 # Re-export hold_cmd and release from Commands submodule (055-held-cmd-display)
 using .Commands: hold_cmd, release
 
-# Conversion functions (extended by GiacSymbolicsExt and GiacMathJSONExt)
-export to_giac, to_symbolics, to_mathjson
+# Conversion functions (extended by GiacSymbolicsExt, GiacMathJSONExt, GiacSymPyExt, and GiacNemoExt)
+export to_giac, to_symbolics, to_mathjson, to_sympy, to_nemo
 
 # MCP server entry point (extended by GiacMCPExt when ModelContextProtocol is loaded)
 export giac_mcp_server
@@ -162,8 +170,11 @@ export giac_mcp_server
 """
     to_giac(expr)
 
-Convert an expression to GiacExpr. Extended by GiacSymbolicsExt for Symbolics.Num types
-and by GiacMathJSONExt for MathJSON.AbstractMathJSONExpr types.
+Convert an expression to GiacExpr. Extended by GiacSymbolicsExt for Symbolics.Num types,
+by GiacMathJSONExt for MathJSON.AbstractMathJSONExpr types, by GiacSymPyExt for
+SymPy.Sym types, by GiacLibPARIExt for LibPARI.Gen types, and by GiacNemoExt for Nemo 
+ring elements (ZZRingElem, QQFieldElem, polynomials, finite-field and number-field 
+elements, matrices).
 """
 function to_giac end
 
@@ -181,6 +192,30 @@ function to_symbolics end
 Convert a GiacExpr or GiacMatrix to a MathJSON.jl expression. Extended by GiacMathJSONExt.
 """
 function to_mathjson end
+
+"""
+    to_sympy(expr::GiacExpr)
+
+Convert a GiacExpr to a SymPy.jl (`SymPy.Sym`) expression. Extended by GiacSymPyExt.
+
+This function is **extended by `GiacSymPyExt` when `SymPy` is loaded**. Calling it
+without first loading `SymPy` raises a `MethodError`.
+"""
+function to_sympy end
+
+"""
+    to_nemo(expr::GiacExpr, parent)
+
+Convert a GiacExpr into a Nemo.jl element of the given parent ring
+(`ZZ`, `QQ`, a univariate polynomial ring, an `AbsSimpleNumField`, an
+`FqField`, or a `MatSpace`). Extended by `GiacNemoExt` when `Nemo` is
+loaded.
+
+The parent ring is required because Nemo elements are parent-typed while a
+`GiacExpr` is an untyped symbolic tree. Calling this without first loading
+`Nemo` raises a `MethodError`.
+"""
+function to_nemo end
 
 """
     giac_mcp_server(; name="giac-cas", version=string(pkgversion(Giac)), kwargs...) -> ModelContextProtocol.Server
@@ -242,7 +277,7 @@ module __init__ functions run BEFORE parent module __init__ in Julia.
 function __init__()
     try
         init_giac_library()
-        DEFAULT_CONTEXT[] = GiacContext()
+        DEFAULT_CONTEXT[] = GiacContext(Val(:shared))
         # Initialize command registry (003-giac-commands)
         _init_command_registry()
         # Generate command functions in Commands submodule (009-commands-submodule)

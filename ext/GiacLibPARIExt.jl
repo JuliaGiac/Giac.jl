@@ -66,8 +66,15 @@ const INWARD_SUPPORTED = "INT, ZINT, FRAC, DOUBLE, REAL, CPLX, IDNT, SYMB and VE
 # than at a global setting — so the decimal is faithful, and only the bit
 # width has to be recovered. `_giac_real_to_bigfloat` recovers it by search
 # and *verifies* the result: the candidate is accepted only when re-encoding
-# it reproduces Giac's own printed form character for character. A width that
-# cannot be verified raises rather than returning a quietly-rounded value.
+# it reproduces Giac's own printed form character for character.
+#
+# That verification only closes for a REAL that reached Giac through Julia,
+# whose stored rendering is MPFR's shortest round-tripping decimal. Giac
+# prints a REAL it built itself — `evalf(x, d)` — in its own fixed-digit
+# form, a different decimal for the same bits, and the verification leg
+# normalises that away by going back out through `string(::BigFloat)`. For
+# those the search finds nothing and the fallback keeps every digit Giac
+# printed, which is all the text carries.
 # ===========================================================================
 
 # Significant decimal digits in Giac's rendering of a REAL.
@@ -76,12 +83,23 @@ function _significant_digits(s::AbstractString)
     return count(isdigit, mantissa)
 end
 
-"""
-Recover the exact `BigFloat` behind a Giac `REAL`.
+# Narrowest width that can hold `d` significant decimal digits.
+_width_for_digits(d::Integer) = max(2, ceil(Int, d * log2(10)))
 
-MPFR renders a `p`-bit value with `ceil(p * log10(2)) + 1` significant
-digits, which pins `p` only to within a few bits; the loop closes that gap by
-re-encoding each candidate and keeping the width whose rendering matches.
+"""
+Recover the `BigFloat` behind a Giac `REAL`.
+
+A REAL that reached Giac through Julia carries MPFR's shortest
+round-tripping decimal, and its width is recoverable exactly: MPFR renders a
+`p`-bit value with `ceil(p * log10(2)) + 1` significant digits, which pins
+`p` only to within a few bits, and the loop closes that gap by re-encoding
+each candidate and keeping the width whose rendering matches.
+
+A REAL that Giac built itself — `evalf(x, d)` — is printed in Giac's own
+fixed-digit form instead, which is a *different decimal for the same value*.
+The verification leg cannot see that width, because it goes back out through
+`string(::BigFloat)`, which normalises to the shortest form. For those the
+loop finds nothing, and the fallback holds every digit Giac printed.
 """
 function _giac_real_to_bigfloat(g::GiacExpr)
     s = string(g)
@@ -94,13 +112,12 @@ function _giac_real_to_bigfloat(g::GiacExpr)
         b = setprecision(() -> parse(BigFloat, s), BigFloat, p)
         string(convert(GiacExpr, b)) == s && return b
     end
-    throw(
-        ArgumentError(
-            "pari: could not determine the working precision of the Giac REAL " *
-            "`$s`; no width in $lo:$hi reproduces it. Please report this with " *
-            "the value, at https://github.com/s-celles/Giac.jl/issues",
-        ),
-    )
+    # Not a failure to read the value. Giac re-reads this decimal into the
+    # same REAL, so it is faithful; what is unavailable is the width that
+    # produced it, since Giac's fixed-digit rendering and MPFR's shortest one
+    # disagree for the same bits. Take the narrowest width that holds every
+    # digit Giac printed — never fewer, so nothing it showed us is dropped.
+    return setprecision(() -> parse(BigFloat, s), BigFloat, _width_for_digits(d))
 end
 
 # ===========================================================================

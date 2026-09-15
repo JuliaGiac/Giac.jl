@@ -5,7 +5,7 @@
 module GiacMCPExt
 
 using Giac
-using Giac: giac_eval, search_commands
+using Giac: giac_eval, search_commands, GiacContext
 using ModelContextProtocol
 
 # ============================================================================
@@ -70,7 +70,11 @@ function _make_eval_tool()
         ],
         handler = function (params)
             try
-                result = giac_eval(params["expr"])
+                # A fresh context per call, which is what makes the "each call is
+        # independent" line above true rather than aspirational: a binding
+        # from one call cannot reach the next, and none of them reach the
+        # default context the rest of the session uses.
+        result = giac_eval(params["expr"], GiacContext())
                 return TextContent(text = string(result))
             catch e
                 return CallToolResult(
