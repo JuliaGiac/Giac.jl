@@ -20,6 +20,7 @@ Giac has a flexible ability to add assumptions using `assume` and `additionally`
 * A specification of the domain for the variable with values `real`, `complex`, `rational`, or `integer`.
 * A specification, by name, of a restricted range with values: `negative`, `nonpositive`, `nonnegative`, `positive`, and `finite`.
 * A specification, by a predicate function, of a restricted range through: `<(𝑥)`, `<=(𝑥)`, `>=(𝑥)`, or `>(𝑥)` for a given value `𝑥`.
+* A specification using Symbolics.jl-like metadata syntax: `[domain = Real]`, `[domain = v -> v > 0]`, or `[positive, real]`.
 
 
 # Example
@@ -75,7 +76,28 @@ macro giac_var(xs...)
 end
 
 
+function _merge_metadata(xs)
+    res = Any[]
+    for x in xs
+        if isa(x, Expr) && x.head == :vect
+            if isempty(res)
+                throw(ArgumentError("Metadata [ ] must follow a variable"))
+            end
+            prev = pop!(res)
+            if length(x.args) == 1
+                push!(res, Expr(:(::), prev, x.args[1]))
+            else
+                push!(res, Expr(:(::), prev, Expr(:tuple, x.args...)))
+            end
+        else
+            push!(res, x)
+        end
+    end
+    return res
+end
+
 function _gensyms(xs...)
+    xs = _merge_metadata(xs)
     asstokw(a) = Expr(:kw, esc(a), true)
 
     # Each declaration is parsed and generates a declaration using `symbols`
@@ -233,12 +255,33 @@ end
 
 function _add_assumptions!(x, assumptions)
     Commands.purge(x)
+    
+    # Preprocess assumptions to handle Symbolics.jl style metadata like [domain = Real] or [Real]
+    processed_assumptions = []
     for a in assumptions
+        if isa(a, Expr) && a.head == :(=) && a.args[1] == :domain
+            a = a.args[2]
+        end
+        if a == :Real
+            a = :real
+        elseif a == :Integer
+            a = :integer
+        elseif a == :Complex
+            a = :complex
+        elseif a == :Rational
+            a = :rational
+        elseif a == :Positive
+            a = :positive
+        end
+        push!(processed_assumptions, a)
+    end
+    
+    for a in processed_assumptions
         if a ∈ (:complex, :real, :rational, :integer)
             Commands.assume(x, string(a))
         end
     end
-    for a in assumptions
+    for a in processed_assumptions
         a == :negative    && Commands.additionally(x < 0)
         a == :nonpositive && Commands.additionally(x <= 0)
         a == :nonnegative && Commands.additionally(x >= 0)
@@ -255,7 +298,16 @@ function _add_assumptions!(x, assumptions)
             op == :(>=) && Commands.additionally("$x >= $(val)")
             op == :(>)  && Commands.additionally("$x > $(val)")
         end
-
+        # Handle Symbolics.jl style domain function: domain = v -> v > 0
+        if isa(a, Expr) && a.head == :->
+            # Easiest way: define an anonymous function in Julia and evaluate it with x
+            try
+                func = eval(a)
+                Commands.additionally(Base.invokelatest(func, x))
+            catch e
+                @warn "Could not apply assumption function" a e
+            end
+        end
     end
 end
 
