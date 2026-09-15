@@ -34,6 +34,40 @@
         @test string(collected[3]) == "3"
     end
 
+    @testset "giac_matrix iteration" begin
+        v1 = giac_eval("matrix[[1],[2]]")      # 2×1 matrix
+        v2 = giac_eval("matrix[[1, 2]]")       # 1×2 matrix
+        v3 = giac_eval("matrix[[1, 2],[3,4]]") # 2×2 matrix
+        v4 = giac_eval("matrix[]")             # 0×0 matrix
+
+        # check for matrix subtype of VECT
+        # where is this valuedocumented?
+        @test is_vector(v1) && Giac.Commands.subtype(v1) == 11
+        @test is_vector(v2) && Giac.Commands.subtype(v2) == 11
+        @test is_vector(v3) && Giac.Commands.subtype(v3) == 11
+        @test is_vector(v4) && Giac.Commands.subtype(v4) == 11
+
+        @test size(v1) == (2, 1)
+        @test size(v2) == (1, 2)
+        @test size(v3) == (2, 2)
+        @test size(v4) == (0, 0)
+
+        @test [v1[i] for i in eachindex(v1)] == [v2[i] for i in eachindex(v2)]
+        @test collect(GiacExpr, v1) != collect(GiacExpr, v2)
+
+        @test size(collect(GiacExpr, v1)) == (2,1)
+        @test size(collect(GiacExpr, v2)) == (1,2)
+        @test size(collect(GiacExpr, v3)) == (2,2)
+        @test size(collect(GiacExpr, v4)) == (0,0)
+
+        @test [to_julia(x) for x in v1] == [1;2;;]
+        @test [to_julia(x) for x in v2] == [1 2]
+        @test [to_julia(x) for x in v3] == [1 2; 3 4]
+        @test isempty([to_julia(x) for x in v4])
+
+    end
+
+
     @testset "Scalar in operator" begin
         # in() on a non-vector compares string representations
         x = giac_eval("42")
@@ -73,6 +107,75 @@
 
         # Range indexing on non-vector
         @test_throws ErrorException x[1:2]
+    end
+
+    @testset "broadcast over collections" begin
+
+        λ(x) = x + 1
+
+        # broadcasting scalars:
+        x = giac_eval("42")
+        @test λ.(x) == 43
+
+        # is_vector
+        x = [42, 44, 21]
+        lst = giac_eval("$(repr(x))")
+        @test λ.(lst) == GiacExpr[(x .+ 1)...]
+        @test lst .* lst == x .* x
+        @test lst .* lst' == x .* x'
+        @test lst .* lst'' != lst .* lst
+        @test lst .* lst'' == hcat(lst .* lst) # lst'' is a matrix, not vector
+        @test lst .* lst'' == lst .* lst''''   # lst'' == lst'''
+
+        # same as map
+        u = giac_eval("[1,2,3]")
+        @test map(first, u) == first.(u)
+        @test map(+, u, u) == u .+ u
+
+        # vector of vectors
+        u = giac_eval("[[1,2],[3,4]]")
+        @test map(first, u) == first.(u)
+
+        # GiacMatrix
+        N = [1 2; 3 4]
+        M = GiacMatrix(N)
+        @test sin.(M) == collect(GiacExpr, map(sin, M))
+        @test M .* M' == N .* N'
+        @test Base.Broadcast.broadcast(+, GiacMatrix([1 0; 0 1]), giac_eval("[1, 4]")) == [2 1; 4 5]
+        @test Base.Broadcast.broadcast(+, GiacMatrix([1  0]), giac_eval("[1, 4]")) == [2 1; 5 4]
+        @test Base.Broadcast.broadcast(+, GiacMatrix([1 0]), 2) == [3 2]
+
+        # lots of splatting
+        let x = giac_eval("[[1, 4], [2, 5], [3, 6]]")
+            @test .+(x..., .*(x..., x...)..., x[1]..., x[2]..., x[3]...) == [14463, 14472]
+        end
+
+        # over nested scalar operations
+        a = zeros(GiacExpr, 2)
+        a .= 1 .// (1 + 2)
+        @test a == [1//3, 1//3]
+        a .= 1 .// (1 .+ 3)
+        @test a == [1//4, 1//4]
+    end
+
+    @testset "broadcastable" begin
+        @giac_var x
+        @test Base.Broadcast.broadcastable(x)[] == x
+
+        x = [1,2,3]
+        u = giac_eval("$(repr(x))")
+        @test Base.Broadcast.broadcastable(u) == x
+
+        x = [[1,2], [3,4], [5,6]]
+        u = giac_eval("$(repr(x))")
+        @test to_julia.(Base.Broadcast.broadcastable(u)) == x
+
+        u = giac_eval("matrix($(repr(x)))")
+        @test Base.Broadcast.broadcastable(u) == mapreduce(permutedims, vcat,x)
+
+        x = [1 2; 3 4]
+        u = GiacMatrix(x)
+        @test Base.Broadcast.broadcastable(u) == x
     end
 end
 
