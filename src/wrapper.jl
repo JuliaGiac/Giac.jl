@@ -291,8 +291,54 @@ function _get_expr_string(ptr::Ptr{Cvoid})::String
     return "<unknown>"
 end
 
+# ---------------------------------------------------------------------------
+# Per-context evaluation
+#
+# A `GiacContext` used to be a sentinel: every evaluation funnelled into the
+# one process-wide `giac::context` from `_get_cxxwrap_context()`, so a `:=`
+# binding made through one context was visible from every other. The wrapper
+# gained a context-aware entry point (libgiac-julia-wrapper#3); this is what
+# passes the context through.
+#
+# Note which overload: `giac_eval(ctx, str)` returns a `std::string` and
+# loses the gen. `giac_eval(str, ctx)` returns a `Gen`, which is what we need.
+#
+# `_SHARED_CONTEXT_PTR` keeps the old behaviour for `DEFAULT_CONTEXT` and for
+# anything that does not name a context. That is deliberate: the tier-1 paths,
+# introspection and the conversion helpers re-parse printed expressions
+# through `GiacCxxBindings.giac_eval(str)`, which lands in the process-wide
+# context. Moving the default elsewhere would split the package in two.
+# ---------------------------------------------------------------------------
+
+const _SHARED_CONTEXT_PTR = Ptr{Cvoid}(1)
+
+const _context_objects = Dict{UInt, Any}()  # CxxWrap GiacContext objects by ID
+const _context_counter = Ref{UInt}(1)       # 1 is _SHARED_CONTEXT_PTR
+
+"""
+    _new_giac_context() -> Ptr{Cvoid}
+
+Create a C++ `giac::context` owned by the caller and return a handle for it.
+Falls back to the shared sentinel when the library is unavailable.
+"""
+function _new_giac_context()::Ptr{Cvoid}
+    GiacCxxBindings._have_library || return _SHARED_CONTEXT_PTR
+    _context_counter[] += 1
+    id = _context_counter[]
+    _context_objects[id] = GiacCxxBindings.GiacContext()
+    return Ptr{Cvoid}(id)
+end
+
+# The C++ context behind a handle, or `nothing` for the shared one.
+function _get_context(ptr::Ptr{Cvoid})
+    ptr == _SHARED_CONTEXT_PTR && return nothing
+    return get(_context_objects, UInt(ptr), nothing)
+end
+
 function _giac_eval_string(expr::String, ctx_ptr::Ptr{Cvoid})::Ptr{Cvoid}
-    gen = GiacCxxBindings.giac_eval(expr)
+    ctx = _get_context(ctx_ptr)
+    gen = ctx === nothing ? GiacCxxBindings.giac_eval(expr) :
+                            GiacCxxBindings.giac_eval(expr, ctx)
     return _make_gen_ptr(gen)
 end
 
@@ -319,9 +365,11 @@ function _giac_free_expr(ptr::Ptr{Cvoid})
 end
 
 function _giac_free_context(ptr::Ptr{Cvoid})
-    if ptr == C_NULL
+    if ptr == C_NULL || ptr == _SHARED_CONTEXT_PTR
         return
     end
+    # Dropping the last reference lets CxxWrap destroy the giac::context.
+    delete!(_context_objects, UInt(ptr))
     nothing
 end
 

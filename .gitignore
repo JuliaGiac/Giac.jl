@@ -8,6 +8,7 @@
 !LICENSE
 !CHANGELOG.md
 !CONTRIBUTORS.md
+!SECURITY.md
 
 !Project.toml
 
@@ -29,6 +30,10 @@
 
 !docs/
 !docs/**
+
+# Re-ignore documentation artifacts generated at build time by docs/make.jl
+docs/src/llms.txt
+docs/src/llms-full.txt
 
 !.github/
 !.github/dependabot.yml

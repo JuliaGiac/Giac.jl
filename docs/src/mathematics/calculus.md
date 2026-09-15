@@ -69,6 +69,63 @@ diff(x^2 * y^3, y)
 # Output: 3*x^2*y^2
 ```
 
+### Using the `Differential` operator
+
+Beyond the function-form `Giac.Commands.diff`, Giac.jl also exposes a SciML/ModelingToolkit-style operator: `Differential(var)` is a callable that captures a single differentiation variable and applies partial differentiation to its operand. This pairs naturally with declared functions (`@giac_var f(x, y)`) and with bare symbolic expressions.
+
+```julia
+using Giac
+
+@giac_var x y t f(x, y) u(t)
+
+# Bare-expression form (matches SymPy.jl `diff(expr, var)`)
+Differential(x)(x^2 + y*x)        # Returns: 2*x + y
+Differential(x)(sin(x) * exp(x))   # Returns: cos(x)*exp(x) + sin(x)*exp(x)
+
+# Function-form: declared function, returns a DerivativeExpr
+Dx = Differential(x)
+Dy = Differential(y)
+Dx(f)               # ∂f/∂x
+Dy(Dx(f))           # ∂²f/∂y∂x  (cross partial — see "Notation" below)
+Dx(Dx(f))           # ∂²f/∂x²   (adjacent same-var steps collapse)
+
+# Mono-variable functions work the same way
+Dt = Differential(t)
+Dt(u)               # u'(t)
+Dt(Dt(u))           # u''(t)
+
+# Two-argument shorthand for n-th order (matches Symbolics.jl's Differential(x, 2))
+Differential(x, 3)(f)             # ∂³f/∂x³  — same as Dx(Dx(Dx(f)))
+Differential(t, 2)(u)             # u''(t)   — same as Dt(Dt(u))
+Differential(x, 2)(x^3)           # 6*x      — bare-expression second derivative
+
+# Symbolics-style algebraic surface
+Differential(t)^2                 # === Differential(t, 2)
+Differential(t)^0                 # === identity
+Differential(y) * Differential(x) # composition — same as Differential(y) ∘ Differential(x)
+(Differential(y) ∘ Differential(x))(f)  # ∂²f/∂y∂x
+
+# Force evaluation of a lazy DerivativeExpr (no-op on plain GiacExpr —
+# matches Symbolics.jl's expand_derivatives)
+expand_derivatives(Dx(f))         # → diff(f(x,y), x) as a GiacExpr
+expand_derivatives(x^2 + y*x)     # → x^2 + y*x  (identity)
+```
+
+#### Notation: right-to-left Leibniz convention
+
+In partial-derivative output (`Base.show` and the math comments above),
+Giac.jl uses the **right-to-left Leibniz convention**: in `∂ⁿf/∂v₁…∂vₙ`,
+the **rightmost** variable in the denominator is applied **first**, the
+**leftmost** last. This matches the operator product
+`(∂/∂v₁)·…·(∂/∂vₙ) f` read as a chain of left-multiplications:
+`Differential(y)(Differential(x)(f))` (apply `Differential(x)` first, then
+`Differential(y)`) is written `∂²f/∂y∂x` and pretty-prints as
+`D: ∂²f/∂y∂x`. By Schwarz/Clairaut the value is symmetric for
+sufficiently smooth `f`, but the notation, the `Base.show` output, and the
+internal `DerivativeExpr.steps` field track the order of application.
+
+The function-form path returns a `DerivativeExpr` that records the differentiation history as an ordered sequence of `(variable, order)` steps (innermost-first). The bare-expression path returns a plain `GiacExpr` (already simplified by GIAC). For high-order derivatives (`n ≥ 4`), the human-readable display switches from primes to math-convention parenthesized superscripts: `D(u, 5)` shows as `u⁽⁵⁾(t)` rather than `u'''''(t)`. See [Differential Equations](differential_equations.md) for ODE/PDE workflows and [the migration guide](../migration/d_to_differential.md) for porting from the deprecated `D` operator.
+
 ## Integration
 
 ### Indefinite Integrals

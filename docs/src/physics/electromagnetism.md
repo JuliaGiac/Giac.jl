@@ -93,7 +93,7 @@ Solve the RC circuit differential equation using the D operator:
 @giac_var t R C V(t)
 
 # Capacitor discharging: dV/dt + V/(RC) = 0 using D operator
-ode = D(V) + V/(R*C) ~ 0
+ode = Differential(t)(V) + V/(R*C) ~ 0
 desolve([ode], t, :V)
 # Output: V(t) = c_0*exp(-t/(R*C))
 
@@ -119,7 +119,7 @@ Solve the RL circuit differential equation using the D operator:
 @giac_var t R L I(t) E
 
 # Current decay in RL circuit: dI/dt + (R/L)*I = 0 using D operator
-ode = D(I) + R/L*I ~ 0
+ode = Differential(t)(I) + R/L*I ~ 0
 initial = I(0) ~ E / R
 desolve([ode, initial], t, :I)
 # Output: I(t) = E/R*exp(-R*t/L)

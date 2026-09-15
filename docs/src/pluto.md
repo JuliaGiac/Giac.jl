@@ -50,6 +50,24 @@ using Pluto
 Pluto.run(notebook="examples/02_latex.jl")
 ```
 
+## Symbolic ODEs and PDEs
+
+A worked-example notebook covering symbolic ODE solutions via `desolve` (first-order, harmonic and damped oscillators, third-order, RLC, forced) and partial-differential-equation expressions (heat, wave, transport, separation of variables for the heat equation) using the canonical `Differential` operator from spec 068. All cells are reactive — change a coefficient or initial condition and downstream cells update.
+
+```julia
+using Pluto
+Pluto.run(notebook="examples/07_odes_pdes.jl")
+```
+
+## Other example notebooks
+
+- `examples/01_basics.jl` — symbolic operations primer
+- `examples/02_latex.jl` — LaTeX-rendering demo (referenced above)
+- `examples/03_examples.jl` — comprehensive showcase by domain
+- `examples/04_plotting.jl` — symbolic-to-plotting pipelines
+- `examples/05_programming.jl` — multi-line GIAC programs
+- `examples/06_symbolics_bridge.jl` — Giac.jl × Symbolics.jl interop
+
 See screenshots:
 
 ![screencapture-pluto-notebook](assets/screencapture-pluto-notebook-latex_demo.png)

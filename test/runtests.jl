@@ -17,6 +17,7 @@ using LinearAlgebra
     include("test_api.jl")
     include("test_operators.jl")
     include("test_mathops.jl")
+    include("test_issue71.jl")
     include("test_calculus.jl")
     include("test_algebra.jl")
     include("test_linalg.jl")
@@ -40,6 +41,9 @@ using LinearAlgebra
     # Macro tests (011-giac-symbol-macro)
     include("test_macros.jl")
 
+    # Multivar derivative operator tests (068-multivar-d-operator)
+    include("test_differential.jl")
+
     # Matrix display tests (011-giacmatrix-display)
     include("test_matrix_display.jl")
 
@@ -48,6 +52,16 @@ using LinearAlgebra
 
     # Type conversion tests (022-julia-type-conversion)
     include("test_type_conversion.jl")
+
+    include("test_float_conversion.jl")
+
+    include("test_conversion_constructors.jl")
+
+    include("test_context_isolation.jl")
+
+    include("test_security.jl")
+
+    include("test_to_julia_precision.jl")
 
     # Multiple dispatch for conflicts tests (023-conflicts-multidispatch)
     include("test_conflicts_multidispatch.jl")
@@ -178,6 +192,21 @@ using LinearAlgebra
     # holding only Giac and LibPARI.
     # ============================================================================
     include("test_libpari_ext.jl")
+
+    # The SymPy bridge is deliberately absent from this suite. SymPy.jl reaches
+    # Python through PyCall, so its extension cannot precompile unless the
+    # Python `sympy` module is importable — and with SymPy in the `test`
+    # target, every cell of the main matrix failed at precompile time over a
+    # missing Python package. It has its own job, which provisions Python and
+    # runs test/test_sympy_conversion.jl standalone; see
+    # .github/workflows/CI-SymPy.yml.
+
+    # ============================================================================
+    # Nemo Extension Tests (081-nemo-oscar-bridge)
+    # Bidirectional Giac <-> Nemo bridge: to_giac(::Nemo.RingElem) and
+    # to_nemo(::GiacExpr, parent), with the documented refusal list.
+    # ============================================================================
+    include("test_nemo_conversion.jl")
 
     # ============================================================================
     # Doctests
