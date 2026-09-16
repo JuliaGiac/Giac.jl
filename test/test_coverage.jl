@@ -156,6 +156,9 @@
         @test a == [1//3, 1//3]
         a .= 1 .// (1 .+ 3)
         @test a == [1//4, 1//4]
+        @giac_var x
+        a .= 1 .// (1 + x)
+        @test a == [1/(1+x), 1/(1+x)]
     end
 
     @testset "broadcastable" begin

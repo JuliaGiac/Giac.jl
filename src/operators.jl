@@ -129,6 +129,11 @@ Base.:*(a::Number, b::GiacExpr) = convert(GiacExpr, a) * b
 Base.:/(a::GiacExpr, b::Number) = a / convert(GiacExpr, b)
 Base.:/(a::Number, b::GiacExpr) = convert(GiacExpr, a) / b
 
+# Rational Division (fallback to exact symbolic division)
+Base.://(a::GiacExpr, b::GiacExpr) = a / b
+Base.://(a::GiacExpr, b::Number) = a / b
+Base.://(a::Number, b::GiacExpr) = a / b
+
 # =============================================================================
 # Comparison Operators
 # =============================================================================
