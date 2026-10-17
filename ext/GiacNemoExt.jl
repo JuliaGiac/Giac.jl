@@ -66,12 +66,12 @@ function _bigint_to_gen(n::BigInt)
     end
     n_sign = Int32(Base.sign(n))
     abs_n = abs(n)
-    bit_count = ccall((:__gmpz_sizeinbase, :libgmp), Csize_t,
+    bit_count = ccall((:__gmpz_sizeinbase, Base.GMP.libgmp), Csize_t,
                       (Ref{BigInt}, Cint), abs_n, 2)
     byte_count = div(bit_count + 7, 8)
     bytes = Vector{UInt8}(undef, byte_count)
     actual_count = Ref{Csize_t}(0)
-    ccall((:__gmpz_export, :libgmp), Ptr{Cvoid},
+    ccall((:__gmpz_export, Base.GMP.libgmp), Ptr{Cvoid},
           (Ptr{UInt8}, Ref{Csize_t}, Cint, Csize_t, Cint, Csize_t, Ref{BigInt}),
           bytes, actual_count, 1, 1, 1, 0, abs_n)
     if actual_count[] < byte_count
