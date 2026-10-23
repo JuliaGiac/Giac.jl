@@ -347,8 +347,17 @@ end
 
 # --- containers ------------------------------------------------------------
 
-_elements(v::GiacExpr)::Vector{GiacExpr} =
-    Giac.giac_type(v) == VECT ? GiacExpr[v[i] for i = 1:length(v)] : GiacExpr[]
+function _elements(v::GiacExpr)::Vector{GiacExpr}
+    if Giac.giac_type(v) != VECT
+        return GiacExpr[]
+    end
+    if Giac.is_vector_matrix(v)
+        m = Giac._vector_length(v)
+        return GiacExpr[Giac.Commands.row(v, i-1) for i = 1:m]
+    else
+        return GiacExpr[v[i] for i = 1:length(v)]
+    end
+end
 
 # Build a `t_VEC` from its elements.
 #
