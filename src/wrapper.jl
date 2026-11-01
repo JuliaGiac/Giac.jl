@@ -309,8 +309,10 @@ function _doom(x)
     return nothing
 end
 
-# CxxWrap's finalizer for a wrapped C++ object
-GiacCxxBindings.CxxWrap.CxxWrapCore.delete(x::Union{GiacCxxBindings.GenAllocated, GiacCxxBindings.GiacContextAllocated}) = _doom(x)
+# CxxWrap's finalizer for a wrapped C++ object, including a std::vector of GIAC objects, whose
+# destructor frees them too
+GiacCxxBindings.CxxWrap.CxxWrapCore.delete(x::Union{GiacCxxBindings.GenAllocated, GiacCxxBindings.GiacContextAllocated,
+                                                     GiacCxxBindings.CxxWrap.StdLib.StdVectorAllocated{GiacCxxBindings.Gen}}) = _doom(x)
 
 # With the GIAC lock held: free what finalizers queued
 function _free_doomed!()
