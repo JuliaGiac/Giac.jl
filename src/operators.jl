@@ -515,6 +515,9 @@ function Base.convert(::Type{GiacExpr}, x::Rational)
     return num / den
 end
 
+# `GiacExpr(3//4)`, `GiacExpr.(M)` for a numeric matrix: the same as `convert`
+GiacExpr(x::Number) = convert(GiacExpr, x)
+
 """
     convert(::Type{GiacExpr}, x::Complex) -> GiacExpr
 
