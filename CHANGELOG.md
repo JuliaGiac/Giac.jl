@@ -14,6 +14,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (including one made with `assume`) are removed: `@giac_var x` after
   `@giac_var x::positive` gives back a plain `x`. Functions such as
   `@giac_var u(t)` are not purged.
+- **The documentation carries the JuliaGiac visual identity** and links back
+  to <https://juliagiac.github.io/>: the JuliaGiac mark in the sidebar and in
+  the landing page hero, a favicon, the JuliaGiac palette for the landing
+  page accent, name gradient and glow and for links in the dark theme
+  (`docs/src/assets/juliagiac.css`), an "All JuliaGiac projects" button on
+  the landing page and a footer naming JuliaGiac and Giac's authors.
 
 - **The Pluto documentation page now covers reactive notebooks in general.**
   `docs/src/pluto.md` becomes `docs/src/notebooks.md`, "Using Giac.jl with
