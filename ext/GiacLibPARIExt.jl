@@ -347,17 +347,11 @@ end
 
 # --- containers ------------------------------------------------------------
 
-function _elements(v::GiacExpr)::Vector{GiacExpr}
-    if Giac.giac_type(v) != VECT
-        return GiacExpr[]
-    end
-    if Giac.is_vector_matrix(v)
-        m = Giac._vector_length(v)
-        return GiacExpr[Giac.Commands.row(v, i-1) for i = 1:m]
-    else
-        return GiacExpr[v[i] for i = 1:length(v)]
-    end
-end
+# Top-level entries of a VECT, independent of its subtype: a Giac matrix
+# (subtype 11) yields its rows, not its column-major scalar entries.
+_elements(v::GiacExpr)::Vector{GiacExpr} =
+    Giac.giac_type(v) == VECT ?
+    GiacExpr[Giac._vector_element(v, i) for i = 1:Giac._vector_length(v)] : GiacExpr[]
 
 # Build a `t_VEC` from its elements.
 #

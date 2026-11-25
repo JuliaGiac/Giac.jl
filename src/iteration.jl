@@ -47,16 +47,21 @@ function Base.size(g::GiacExpr)::NTuple{<:Any, Int}
     return (length(g),)
 end
 
+_is_nested_vect(g::GiacExpr) =
+    _vector_length(g) > 0 && is_vector(_vector_element(g, 1))
+
 function Base.transpose(g::GiacExpr)
     # adjust shape: vectors as a column vector is not GiacStyle
-    if is_vector(g)
-        out = invoke_cmd(:transpose, g)
-        if subtype(g) == 0 # plain vector, do twice to lift to 1×n matrix
-            out = invoke_cmd(:transpose, out)
-        end
-        return out
+    is_vector(g) || return g
+    out = invoke_cmd(:transpose, g)
+    # A flat list of scalars is a Julia column vector: transpose it twice to
+    # lift it to a 1×n matrix. A nested list (Giac matrix without subtype 11,
+    # e.g. the result of `[[1,2],[3,4]] * idn(2)`) is a real matrix and must
+    # be transposed once.
+    if !is_vector_matrix(g) && !_is_nested_vect(g)
+        out = invoke_cmd(:transpose, out)
     end
-    return g
+    return out
 end
 
 # ============================================================================
@@ -303,7 +308,7 @@ function Base.getindex(g::GiacExpr, r::AbstractRange)::Vector{GiacExpr}
         if i < 1 || i > n
             throw(BoundsError(g, i))
         end
-        push!(result, _vector_element(g, i))
+        push!(result, g[i])
     end
     return result
 end

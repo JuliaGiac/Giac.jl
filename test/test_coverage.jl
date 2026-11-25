@@ -161,6 +161,23 @@
         @test a == [1/(1+x), 1/(1+x)]
     end
 
+    @testset "transpose of a nested list without matrix subtype" begin
+        # `[[1,2],[3,4]]` and products of nested lists carry subtype 0 but
+        # are matrices for Giac: transpose must swap rows and columns.
+        B = giac_eval("[[1,2],[3,4]]")
+        @test to_julia(transpose(B)) == [[1, 3], [2, 4]]
+        D = giac_eval("[[1,2],[3,4]] * [[1,0],[0,1]]")
+        @test to_julia(transpose(D)) == [[1, 3], [2, 4]]
+        # a flat list is still lifted to a row matrix
+        @test size(transpose(giac_eval("[1,2,3]"))) == (1, 3)
+    end
+
+    @testset "range indexing on a Giac matrix is linear" begin
+        C = giac_eval("matrix[[1,2],[3,4]]")
+        @test C[2:3] == [C[2], C[3]]
+        @test C[1:4] == C[:]
+    end
+
     @testset "broadcastable" begin
         @giac_var x
         @test Base.Broadcast.broadcastable(x)[] == x

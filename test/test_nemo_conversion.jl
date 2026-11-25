@@ -133,6 +133,12 @@ end
         m = giac_eval("[[1,2],[3,4]]")
         M = to_nemo(m, Nemo.matrix_space(ZZ, 2, 2))
         @test M == Nemo.matrix(ZZ, 2, 2, ZZRingElem[1, 2, 3, 4])
+        # a Giac matrix (VECT subtype 11) iterates over scalars, not rows
+        m = giac_eval("matrix[[1,2],[3,4]]")
+        @test to_nemo(m, Nemo.matrix_space(ZZ, 2, 2)) ==
+              Nemo.matrix(ZZ, 2, 2, ZZRingElem[1, 2, 3, 4])
+        @test to_nemo(Giac.Commands.idn(2), Nemo.matrix_space(ZZ, 2, 2)) ==
+              Nemo.matrix(ZZ, 2, 2, ZZRingElem[1, 0, 0, 1])
     end
 end
 

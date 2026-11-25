@@ -128,7 +128,8 @@ end
 
 Base.length(M::GiacMatrix) = (sz = size(M); sz[1]*sz[2])
 Base.axes(M::GiacMatrix) = Base.OneTo.(size(M))
-Base.IteratorSize(M::GiacMatrix) = Base.HasShape{length(invoke_cmd(:dim,M))}()
+Base.IteratorSize(::Type{GiacMatrix}) = Base.HasShape{2}()
+Base.eltype(::Type{GiacMatrix}) = GiacExpr
 
 
 # linear access for GiacMatrix
