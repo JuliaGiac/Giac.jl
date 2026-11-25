@@ -15,7 +15,7 @@ _pages = [
     "Command discovery and help" => "command_discovery_help.md",
     "Variable Substitution" => "substitute.md",
     "Creating Julia Functions" => "julia_functions.md",
-    "Using with Pluto reactive notebooks" => "pluto.md",
+    "Using Giac.jl with reactive notebooks" => "notebooks.md",
     "Using icas (Giac C++ REPL)" => "icas.md",
     "Mathematics" => [
         "Algebra" => "mathematics/algebra.md",
@@ -127,7 +127,15 @@ makedocs(
         # the full core-API docstring set plus worked examples. Ignoring it here
         # is Documenter's own recommended alternative to raising the general limit.
         size_threshold_ignore = ["api/core.md"],
-        assets = ["assets/custom-mermaid.js"],
+        assets = [
+            "assets/custom-mermaid.js",
+            "assets/juliagiac.css",
+            asset("assets/favicon.png", class = :ico, islocal = true),
+        ],
+        footer = "Giac.jl is part of [JuliaGiac](https://juliagiac.github.io/), " *
+                 "which brings [Giac](https://www-fourier.univ-grenoble-alpes.fr/~parisse/giac.html) " *
+                 "(Bernard Parisse and Renée De Graeve) to Julia. " *
+                 "Powered by [Documenter.jl](https://github.com/JuliaDocs/Documenter.jl).",
     ),
     pages = _pages,
     checkdocs = :exports,

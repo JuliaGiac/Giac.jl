@@ -9,6 +9,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **Declaring a variable with `@giac_var` resets it.** Each declared name is
+  purged first, so a value bound with `:=` and any earlier assumption
+  (including one made with `assume`) are removed: `@giac_var x` after
+  `@giac_var x::positive` gives back a plain `x`. Functions such as
+  `@giac_var u(t)` are not purged.
+- **The documentation carries the JuliaGiac visual identity** and links back
+  to <https://juliagiac.github.io/>: the JuliaGiac mark in the sidebar and in
+  the landing page hero, a favicon, the JuliaGiac palette for the landing
+  page accent, name gradient and glow and for links in the dark theme
+  (`docs/src/assets/juliagiac.css`), an "All JuliaGiac projects" button on
+  the landing page and a footer naming JuliaGiac and Giac's authors.
+
+- **The Pluto documentation page now covers reactive notebooks in general.**
+  `docs/src/pluto.md` becomes `docs/src/notebooks.md`, "Using Giac.jl with
+  reactive notebooks", with two sections: Pluto (the previous content) and
+  KaimonSlate, which presents GiacSlate.jl, its install, a first cell and its
+  example notebooks, and links to the GiacSlate documentation. The page's URL
+  changes from `/pluto/` to `/notebooks/`; the landing page card now reads
+  "Reactive notebooks".
+
 - **The SymPy bridge is tested by its own CI job, not by the main matrix.**
   `SymPy.jl` reaches Python through PyCall, so `GiacSymPyExt` cannot
   precompile unless the Python `sympy` module is importable. With `SymPy` in
@@ -33,6 +53,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   standalone job fail before its first assertion.
 
 ### Added
+
+- **`@giac_var` declares variables with assumptions, arrays of variables and
+  renamed variables** ([#35](https://github.com/JuliaGiac/Giac.jl/pull/35),
+  adapted from SymPyCore.jl's `@syms`). `@giac_var x::positive`,
+  `n::(integer, >=(0))`, `y::(<(c))` (the bound is evaluated where the macro
+  is called), `x [positive, real]` and `x [domain = v -> v > 0]` attach
+  assumptions through Giac's `assume` and `additionally`. `@giac_var z[1:3]`
+  and `m[1:2, -1:1]` declare arrays of subscripted variables (`z₁`, `m₁_₋₁`),
+  with ranges that may use variables (`a[1:n]`) and assumptions on every
+  element (`u[1:2]::positive`). `v => "𝑣"` and `w(t) => "W"` bind a Julia
+  variable to another Giac name. The plain and function forms behave as
+  before. The macro does no `eval` while expanding, so it can be used inside
+  functions and in other packages, and an unknown assumption, or an
+  assumption on a function such as `u(t)`, is an error at expansion time.
+  Documented in `docs/src/variables.md`.
 
 - **`Differential` operator** (spec 068): canonical SciML/ModelingToolkit-style
   partial-differentiation operator. `Differential(x)(f)` for a declared function
@@ -146,6 +181,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   been fixed upstream and the document needs updating.
 
 ### Fixed
+
+- **`to_giac` no longer overflows the stack on irrational constants**
+  ([#89](https://github.com/JuliaGiac/Giac.jl/issues/89)). With Symbolics 7,
+  `Num(pi)` unwraps to `identity(π)` around the `Irrational` `π`. SymbolicUtils
+  treats an `Irrational` as a literal number whose `unwrap_const` is itself,
+  so `to_giac(Num(pi))`, `to_giac(Num(ℯ))` and `to_giac(x + pi)` recursed until
+  `StackOverflowError`; the branch meant for these constants came after and
+  was never reached. Irrational constants are now converted first: `π` to
+  `pi`, `ℯ` to `exp(1)` (previously an identifier named `e`, which GIAC does
+  not treat as Euler's number), `γ` to `euler_gamma`, and the golden ratio `φ`
+  to the exact `(1+sqrt(5))/2`. A constant with no GIAC equivalent, such as
+  `catalan`, throws an `ArgumentError` instead of hanging. `identity(c)`
+  wrappers are unwrapped.
 
 - **`GiacContext` now isolates evaluations.** The type has always been public
   and `giac_eval(expr, ctx)` has always taken one, but the context was
