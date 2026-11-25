@@ -10,7 +10,7 @@
 - [Command discovery and help](command_discovery_help.html)
 - [Variable Substitution](substitute.html)
 - [Creating Julia Functions](julia_functions.html)
-- [Using with Pluto reactive notebooks](pluto.html)
+- [Using Giac.jl with reactive notebooks](notebooks.html)
 - [Using icas (Giac C++ REPL)](icas.html)
 - [Algebra](mathematics/algebra.html)
 - [Calculus](mathematics/calculus.html)
