@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **Declaring a variable with `@giac_var` resets it.** Each declared name is
+  purged first, so a value bound with `:=` and any earlier assumption
+  (including one made with `assume`) are removed: `@giac_var x` after
+  `@giac_var x::positive` gives back a plain `x`. Functions such as
+  `@giac_var u(t)` are not purged.
+
 - **The Pluto documentation page now covers reactive notebooks in general.**
   `docs/src/pluto.md` becomes `docs/src/notebooks.md`, "Using Giac.jl with
   reactive notebooks", with two sections: Pluto (the previous content) and
@@ -41,6 +47,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   standalone job fail before its first assertion.
 
 ### Added
+
+- **`@giac_var` declares variables with assumptions, arrays of variables and
+  renamed variables** ([#35](https://github.com/JuliaGiac/Giac.jl/pull/35),
+  adapted from SymPyCore.jl's `@syms`). `@giac_var x::positive`,
+  `n::(integer, >=(0))`, `y::(<(c))` (the bound is evaluated where the macro
+  is called), `x [positive, real]` and `x [domain = v -> v > 0]` attach
+  assumptions through Giac's `assume` and `additionally`. `@giac_var z[1:3]`
+  and `m[1:2, -1:1]` declare arrays of subscripted variables (`z₁`, `m₁_₋₁`),
+  with ranges that may use variables (`a[1:n]`) and assumptions on every
+  element (`u[1:2]::positive`). `v => "𝑣"` and `w(t) => "W"` bind a Julia
+  variable to another Giac name. The plain and function forms behave as
+  before. The macro does no `eval` while expanding, so it can be used inside
+  functions and in other packages, and an unknown assumption, or an
+  assumption on a function such as `u(t)`, is an error at expansion time.
+  Documented in `docs/src/variables.md`.
 
 - **`Differential` operator** (spec 068): canonical SciML/ModelingToolkit-style
   partial-differentiation operator. `Differential(x)(f)` for a declared function
