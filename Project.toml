@@ -33,7 +33,7 @@ GiacTermInterfaceExt = "TermInterface"
 
 [compat]
 Aqua = "0.8"
-CSV = "0.10"
+CSV = "0.10, 1"
 CommonSolve = "0.2"
 CxxWrap = "0.17"
 DataFrames = "1.6, 1.7, 1.8"
