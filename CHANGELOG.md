@@ -261,6 +261,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   assumption on a function such as `u(t)`, is an error at expansion time.
   Documented in `docs/src/variables.md`.
 
+- **`evaluate_with_diagnostics`: GIAC log messages returned apart from the
+  value.** Some GIAC commands report information on their log stream
+  (stderr) instead of in their result. A definite integral with no closed
+  form, such as Serret's `integrate(ln(1+x)/(1+x^2), x, 0, 1)`, is returned
+  unevaluated while GIAC prints the estimate `// ∫ ~= 0.272198261288`.
+  `evaluate_with_diagnostics(f)` runs `f()` and returns a `GiacEvalResult`
+  with `value` (what `f` returned, unchanged), `diagnostics` (one
+  `GiacDiagnostic(level, text, raw)` per line, with `level` a
+  `DiagnosticLevel.T`: `INFO`, `WARNING` or `ERROR`) and `log` (the raw
+  text). `integrate` still returns a `GiacExpr`: the estimate is GIAC's hint,
+  not a requested numeric evaluation, and never becomes the value. The
+  capture is installed on the C++ context by the wrapper, so it covers the
+  `invoke_cmd` fast path (`apply_func1`/`apply_funcN`) as well as
+  `giac_eval`. A `context` keyword also captures a dedicated `GiacContext`.
+  Captures nest, and the log stream is restored if `f` throws. This needs
+  `libgiac_julia_jll` 0.6, which adds the wrapper's `log_capture_*` API; with
+  an older wrapper the function throws a `GiacError`. The
+  `libgiac_julia_jll` compat is widened to `0.5.2, 0.6`. See
+  `docs/src/diagnostics.md`.
 - **`Differential` operator** (spec 068): canonical SciML/ModelingToolkit-style
   partial-differentiation operator. `Differential(x)(f)` for a declared function
   `f(x, y)` returns a `DerivativeExpr` representing `∂f/∂x`. Composition handles

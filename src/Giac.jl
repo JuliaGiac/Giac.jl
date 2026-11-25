@@ -83,6 +83,9 @@ include("build_function.jl")
 # Differential operator (068-multivar-d-operator)
 include("differential.jl")
 
+# Diagnostics capture: GIAC log messages returned apart from the value
+include("diagnostics.jl")
+
 # GenTypes module - Scoped enum for GIAC types (041-scoped-type-enum)
 include("gen_types.jl")
 
@@ -187,6 +190,9 @@ export to_giac, to_symbolics, to_mathjson, to_sympy, to_nemo, to_symbolicutils
 
 # MCP server entry point (extended by GiacMCPExt when ModelContextProtocol is loaded)
 export giac_mcp_server
+
+# Diagnostics capture: GIAC log messages returned apart from the value
+export evaluate_with_diagnostics, GiacDiagnostic, GiacEvalResult, DiagnosticLevel
 
 """
     to_giac(expr)

@@ -15,6 +15,7 @@ _pages = [
     "Command discovery and help" => "command_discovery_help.md",
     "Variable Substitution" => "substitute.md",
     "Creating Julia Functions" => "julia_functions.md",
+    "Capturing GIAC messages" => "diagnostics.md",
     "Using Giac.jl with reactive notebooks" => "notebooks.md",
     "Using icas (Giac C++ REPL)" => "icas.md",
     "Threads and global state" => "threads.md",
