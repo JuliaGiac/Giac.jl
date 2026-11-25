@@ -14,7 +14,7 @@ The Giac computer algebra library and its C++ wrapper are provided automatically
 
 ### Requirements
 
-- Julia 1.11 or later
+- Julia 1.10 or later
 
 ### Verifying Installation
 

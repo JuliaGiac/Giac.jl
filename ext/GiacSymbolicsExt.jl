@@ -77,12 +77,12 @@ function _bytes_to_bigint(bytes::Vector{UInt8}, sign::Int32)::BigInt
     end
 
     result = BigInt()
-    ccall((:__gmpz_import, :libgmp), Cvoid,
+    ccall((:__gmpz_import, Base.GMP.libgmp), Cvoid,
           (Ref{BigInt}, Csize_t, Cint, Csize_t, Cint, Csize_t, Ptr{UInt8}),
           result, length(bytes), 1, 1, 1, 0, bytes)
 
     if sign < 0
-        ccall((:__gmpz_neg, :libgmp), Cvoid,
+        ccall((:__gmpz_neg, Base.GMP.libgmp), Cvoid,
               (Ref{BigInt}, Ref{BigInt}), result, result)
     end
 
@@ -109,14 +109,14 @@ function _bigint_to_gen(n::BigInt)
     # Calculate number of bytes needed
     # GMP stores in limbs, we need to figure out byte count
     # Using mpz_sizeinbase gives bit count, convert to bytes
-    bit_count = ccall((:__gmpz_sizeinbase, :libgmp), Csize_t,
+    bit_count = ccall((:__gmpz_sizeinbase, Base.GMP.libgmp), Csize_t,
                       (Ref{BigInt}, Cint), abs_n, 2)
     byte_count = div(bit_count + 7, 8)
 
     # Allocate buffer and export
     bytes = Vector{UInt8}(undef, byte_count)
     actual_count = Ref{Csize_t}(0)
-    ccall((:__gmpz_export, :libgmp), Ptr{Cvoid},
+    ccall((:__gmpz_export, Base.GMP.libgmp), Ptr{Cvoid},
           (Ptr{UInt8}, Ref{Csize_t}, Cint, Csize_t, Cint, Csize_t, Ref{BigInt}),
           bytes, actual_count, 1, 1, 1, 0, abs_n)
 
@@ -156,9 +156,31 @@ end
 Recursively convert a Symbolics.jl expression tree to a GIAC Gen object.
 This is the core function for direct to_giac conversion without string serialization.
 """
+# Julia's irrational constants and their GIAC equivalents. Checked before
+# anything else: an `Irrational` is a literal number to SymbolicUtils, and
+# `unwrap_const` returns it unchanged, so falling through to the literal-number
+# branch recursed forever (issue #89).
+function _irrational_to_gen(c::AbstractIrrational)
+    c === Base.MathConstants.pi &&
+        return Giac.GiacCxxBindings.make_identifier("pi")
+    # GIAC's `e` parses to exp(1); an identifier named "e" would be a plain
+    # unknown, so build it by parsing.
+    c === Base.MathConstants.e && return Giac.GiacCxxBindings.Gen("exp(1)")
+    c === Base.MathConstants.eulergamma &&
+        return Giac.GiacCxxBindings.make_identifier("euler_gamma")
+    c === Base.MathConstants.golden &&
+        return Giac.GiacCxxBindings.Gen("(1+sqrt(5))/2")
+    throw(ArgumentError("cannot convert the irrational constant $c to GIAC: " *
+                        "it has no GIAC equivalent; convert it to a float " *
+                        "first, e.g. Float64($c)"))
+end
+
 function _convert_to_gen(expr)
     # Unwrap Num if needed
     unwrapped = expr isa Num ? Symbolics.unwrap(expr) : expr
+
+    # Irrational constants (π, ℯ, γ, φ) — before the literal-number branch
+    unwrapped isa AbstractIrrational && return _irrational_to_gen(unwrapped)
 
     # Handle numeric literals
     if unwrapped isa Integer
@@ -200,6 +222,12 @@ function _convert_to_gen(expr)
         op = operation(unwrapped)
         args = arguments(unwrapped)
 
+        # Symbolics 7 wraps constants as identity(c), e.g. Num(pi); GIAC has
+        # no identity function, so convert the argument itself.
+        if op === identity && length(args) == 1
+            return _convert_to_gen(only(args))
+        end
+
         # Convert all arguments recursively
         gen_args = [_convert_to_gen(a) for a in args]
 
@@ -211,12 +239,8 @@ function _convert_to_gen(expr)
         return Giac.GiacCxxBindings.make_symbolic_unevaluated(giac_op, args_vec)
     end
 
-    # Handle special constants
-    if unwrapped === π || unwrapped === Base.MathConstants.pi
-        return Giac.GiacCxxBindings.make_identifier("pi")
-    elseif unwrapped === ℯ || unwrapped === Base.MathConstants.e
-        return Giac.GiacCxxBindings.make_identifier("e")
-    elseif unwrapped === im
+    # Handle special constants (irrationals are handled at the top)
+    if unwrapped === im
         return Giac.GiacCxxBindings.make_identifier("i")
     end
 
