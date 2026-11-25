@@ -398,9 +398,35 @@ a + b
 @giac_var a b
 ```
 
+### Arrays of variables
+
+Index a name with ranges to declare an array of variables. The result has
+the shape of the ranges, and the names carry subscripts:
+
+```julia
+@giac_var z[1:3]          # GiacExpr[z₁, z₂, z₃]
+@giac_var m[1:2, 0:1]     # 2×2 Matrix: m₁_₀ m₁_₁; m₂_₀ m₂_₁
+
+k = 4
+@giac_var a[1:k]          # ranges may use variables: a₁ … a₄
+```
+
+### Renaming
+
+`v => "name"` binds the Julia variable `v` to a Giac variable with another
+name, for instance one that is awkward to type:
+
+```julia
+@giac_var v => "𝑣"        # v is the Giac variable 𝑣
+@giac_var w(t) => "W"     # w is W(t)
+```
+
 ## Batch Variable Creation
 
-Create multiple indexed symbolic variables with `@giac_several_vars`:
+Create multiple indexed symbolic variables with `@giac_several_vars`. It
+names them with plain digits (`a1`, `m12`) and returns a flat tuple; for an
+array with subscripted names, use `@giac_var a[1:3]` (see
+[Arrays of variables](@ref)).
 
 ```julia
 using Giac
@@ -461,8 +487,49 @@ Combine inequalities with `&` (and) and `|` (or):
 
 ## Assumptions on Variables
 
-Use `assume` and `additionally` to declare constraints on symbolic variables.
-Subsequent computations will respect these assumptions:
+### Assumptions in `@giac_var`
+
+Declare a variable with assumptions by annotating it. Later computations take
+them into account:
+
+```julia
+using Giac
+using Giac.Commands: about, sqrt, sign
+
+@giac_var x::positive
+sqrt(x^2)                  # x (abs(x) without the assumption)
+sign(x)                    # 1
+
+@giac_var n::(integer, >=(0))
+about(n)                   # assume[integer,[line[0,+infinity]],[]]
+
+c = 2
+@giac_var y::(<(c))        # bounds are evaluated: y < 2
+@giac_var a[1:3]::real     # every element of the array is real
+@giac_var (r => "ρ")::positive
+```
+
+| Kind | Values |
+|---|---|
+| Domain | `real`, `complex`, `rational`, `integer` (also `Real`, `Complex`, `Rational`, `Integer`) |
+| Range | `positive`, `negative`, `nonnegative`, `nonpositive`, `finite` |
+| Comparison | `<(b)`, `<=(b)`, `>=(b)`, `>(b)`, with `b` any number, Julia variable or `GiacExpr` |
+| Function | `[domain = v -> v > 0]`: called with the variable, returns a Giac condition |
+
+Several assumptions go in a tuple, `x::(integer, positive)`. The
+Symbolics.jl-style metadata syntax also works: `x [positive, real]`,
+`x [domain = Real]`. An unknown assumption is an error when the code is
+parsed, and functions such as `u(t)` take no assumptions.
+
+Declaring a variable starts it afresh: a value bound with `:=` and earlier
+assumptions are removed, so `@giac_var x` after `@giac_var x::positive` gives
+back a plain `x`. Like `assume`, assumptions live in Giac's global state for
+the rest of the session.
+
+### `assume` and `additionally`
+
+Use `assume` and `additionally` to declare constraints on symbolic variables
+that already exist. Subsequent computations will respect these assumptions:
 
 ```julia
 using Giac
