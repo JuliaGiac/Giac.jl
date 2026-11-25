@@ -9,6 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **The Pluto documentation page now covers reactive notebooks in general.**
+  `docs/src/pluto.md` becomes `docs/src/notebooks.md`, "Using Giac.jl with
+  reactive notebooks", with two sections: Pluto (the previous content) and
+  KaimonSlate, which presents GiacSlate.jl, its install, a first cell and its
+  example notebooks, and links to the GiacSlate documentation. The page's URL
+  changes from `/pluto/` to `/notebooks/`; the landing page card now reads
+  "Reactive notebooks".
+
 - **The SymPy bridge is tested by its own CI job, not by the main matrix.**
   `SymPy.jl` reaches Python through PyCall, so `GiacSymPyExt` cannot
   precompile unless the Python `sympy` module is importable. With `SymPy` in
