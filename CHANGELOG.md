@@ -155,6 +155,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **`to_giac` no longer overflows the stack on irrational constants**
+  ([#89](https://github.com/JuliaGiac/Giac.jl/issues/89)). With Symbolics 7,
+  `Num(pi)` unwraps to `identity(π)` around the `Irrational` `π`. SymbolicUtils
+  treats an `Irrational` as a literal number whose `unwrap_const` is itself,
+  so `to_giac(Num(pi))`, `to_giac(Num(ℯ))` and `to_giac(x + pi)` recursed until
+  `StackOverflowError`; the branch meant for these constants came after and
+  was never reached. Irrational constants are now converted first: `π` to
+  `pi`, `ℯ` to `exp(1)` (previously an identifier named `e`, which GIAC does
+  not treat as Euler's number), `γ` to `euler_gamma`, and the golden ratio `φ`
+  to the exact `(1+sqrt(5))/2`. A constant with no GIAC equivalent, such as
+  `catalan`, throws an `ArgumentError` instead of hanging. `identity(c)`
+  wrappers are unwrapped.
+
 - **`GiacContext` now isolates evaluations.** The type has always been public
   and `giac_eval(expr, ctx)` has always taken one, but the context was
   ignored: every evaluation funnelled into a single process-wide
