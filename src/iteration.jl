@@ -20,20 +20,48 @@ length(giac_eval("42"))          # 1
 """
 function Base.length(g::GiacExpr)::Int
     if is_vector(g)
-        return _vector_length(g)
+        l = _vector_length(g)
+        iszero(l) && return l
+        if is_vector_matrix(g)
+            return l * _vector_length(Commands.row(g, 0))
+        end
+        return l
     else
         return 1
     end
 end
 
 """
-    Base.size(g::GiacExpr) -> Tuple{Int}
+    Base.size(g::GiacExpr) -> NTuple{<:Any, Int}
 
 Return the size of a GiacExpr as a tuple.
-For vectors, returns `(length,)`. For scalars, returns `(1,)`.
+For vectors, returns `(length,)`. For scalars, returns `(1,)`, for matrices, return value of `dim`.
 """
-function Base.size(g::GiacExpr)::Tuple{Int}
+function Base.size(g::GiacExpr)::NTuple{<:Any, Int}
+    if is_vector_matrix(g)
+        m = _vector_length(g)
+        m == 0 && return (0,0)
+        n = length(_vector_element(g, 1))
+        return (m,n)
+    end
     return (length(g),)
+end
+
+_is_nested_vect(g::GiacExpr) =
+    _vector_length(g) > 0 && is_vector(_vector_element(g, 1))
+
+function Base.transpose(g::GiacExpr)
+    # adjust shape: vectors as a column vector is not GiacStyle
+    is_vector(g) || return g
+    out = invoke_cmd(:transpose, g)
+    # A flat list of scalars is a Julia column vector: transpose it twice to
+    # lift it to a 1×n matrix. A nested list (Giac matrix without subtype 11,
+    # e.g. the result of `[[1,2],[3,4]] * idn(2)`) is a real matrix and must
+    # be transposed once.
+    if !is_vector_matrix(g) && !_is_nested_vect(g)
+        out = invoke_cmd(:transpose, out)
+    end
+    return out
 end
 
 # ============================================================================
@@ -62,12 +90,20 @@ function Base.getindex(g::GiacExpr, i::Int)::GiacExpr
         throw(ErrorException("Gen is not a vector/list"))
     end
 
-    n = length(g)
-    if i < 1 || i > n
-        throw(BoundsError(g, i))
-    end
+    if is_vector_matrix(g)
+        m = _vector_length(g)
+        m == 0 && throw(BoundsError("attempt to access 0×0 matrix at index [1]"))
+        n = _vector_length(Commands.row(g,0))
+        i′,j′ = CartesianIndices((1:m, 1:n))[i].I
+        return _vector_element(Commands.row(g, i′-1), j′)
+    else
+        n = length(g)
+        if i < 1 || i > n
+            throw(BoundsError(g, i))
+        end
 
-    return _vector_element(g, i)
+        return _vector_element(g, i)
+    end
 end
 
 """
@@ -82,14 +118,14 @@ Base.firstindex(g::GiacExpr) = 1
 
 Return the last index (same as `length(g)`).
 """
-Base.lastindex(g::GiacExpr) = length(g)
+Base.lastindex(g::GiacExpr) = prod(size(g), init=1)
 
 """
     Base.eachindex(g::GiacExpr)
 
 Return an iterator over valid indices.
 """
-Base.eachindex(g::GiacExpr) = 1:length(g)
+Base.eachindex(g::GiacExpr) = Base.OneTo(length(g))
 
 # ============================================================================
 # Iteration Protocol
@@ -99,7 +135,8 @@ Base.eachindex(g::GiacExpr) = 1:length(g)
     Base.iterate(g::GiacExpr)
 
 Begin iteration over a GiacExpr. For vectors, yields elements one by one.
-For scalars, yields the value once.
+For scalars, yields the value once. For matrices yields a matrix in column-major
+order.
 
 # Example
 ```julia
@@ -111,11 +148,19 @@ end
 """
 function Base.iterate(g::GiacExpr)
     if is_vector(g)
-        n = length(g)
+        n = _vector_length(g)
         if n == 0
             return nothing
         end
-        return (_vector_element(g, 1), 2)
+        if is_vector_matrix(g)
+            r = Commands.row(g, 0)
+            val = _vector_element(r, 1)
+            state = (1, 1, n)
+        else
+            val = _vector_element(g, 1)
+            state = (2, n, 0) # pad to return same type as above
+        end
+        return (val, state)
     else
         # Non-vector: iterate once over the value itself
         return (g, nothing)
@@ -133,14 +178,52 @@ function Base.iterate(g::GiacExpr, state)
         return nothing
     end
 
-    # Vector case
-    n = length(g)
-    if state > n
-        return nothing
-    end
+    if is_vector_matrix(g)
+        ## matrix case
+        ## iterate down column and then over
+        m,n,N = state
+        if m > N-1
+            m,n = 0,n+1
+        end
+        r = Commands.row(g, m)
+        n > _vector_length(r) && return nothing
+        val = _vector_element(r, n)
+        state = (m+1, n, N)
 
-    return (_vector_element(g, state), state + 1)
+        return (val, state)
+    else
+        # Vector case
+        i,n,_ = state
+        if i > n
+            return nothing
+        end
+        return (_vector_element(g, i), (i + 1, n, 0))
+    end
 end
+
+### broadcasting
+function Base.Broadcast.broadcastable(ex::GiacExpr)
+    if is_vector(ex)
+        return collect(GiacExpr, ex)
+    else
+        return Ref(ex)
+    end
+end
+
+function Base.IteratorSize(ex::GiacExpr)
+    is_vector_matrix(ex)  && return Base.HasShape{2}()
+    is_vector(ex) && return Base.HasShape{1}()
+    Base.HasLength()
+end
+
+function Base.axes(ex::GiacExpr)
+    if is_vector(ex)
+        return Base.OneTo.(size(ex))
+    else
+        return ()
+    end
+end
+
 
 """
     Base.eltype(::Type{GiacExpr})
@@ -225,7 +308,7 @@ function Base.getindex(g::GiacExpr, r::AbstractRange)::Vector{GiacExpr}
         if i < 1 || i > n
             throw(BoundsError(g, i))
         end
-        push!(result, _vector_element(g, i))
+        push!(result, g[i])
     end
     return result
 end

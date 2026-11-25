@@ -444,7 +444,10 @@ Compute the complex conjugate of a GiacExpr.
 Uses Tier 1 C++ wrapper for high performance.
 """
 Base.conj(expr::GiacExpr)::GiacExpr = _tier1_or_fallback(_giac_conj_tier1, :conj, expr)
-Base.adjoint(expr::GiacExpr)::GiacExpr = conj(expr)
+
+Base.adjoint(expr::GiacExpr) =  transpose(conj(expr))
+
+
 
 """
     Base.isfinite(expr::GiacExpr) -> Bool

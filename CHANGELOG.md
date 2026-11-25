@@ -9,6 +9,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **Giac matrices iterate over their entries, like Julia matrices** (#33).
+  For a matrix with Giac's matrix subtype (`matrix[...]`, `idn(n)`):
+  `length`, linear indexing, `first`, `sum`, `in`, `map`, `keys` and
+  iteration work entry by entry in column-major order, not row by row:
+  `sum(matrix[[1,2],[3,4]])` is `10` (it was the column sums `[4,6]`), and
+  `for row in M` no longer yields rows. `collect(::GiacMatrix)` returns a
+  `Matrix`. `transpose` of a flat list gives a 1×n row, and `u'` is that row
+  conjugated, so `u .* u'` is an outer product as in Julia; note that
+  `u' * u` is now the one-element list `[14]` rather than `14`. `B'`
+  transposes a matrix (it only conjugated before).
+
 - **Declaring a variable with `@giac_var` resets it.** Each declared name is
   purged first, so a value bound with `:=` and any earlier assumption
   (including one made with `assume`) are removed: `@giac_var x` after
@@ -53,6 +64,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   standalone job fail before its first assertion.
 
 ### Added
+
+- **Broadcasting over Giac lists and matrices** ([#33](https://github.com/JuliaGiac/Giac.jl/pull/33),
+  fixes [#20](https://github.com/JuliaGiac/Giac.jl/issues/20) and
+  [#34](https://github.com/JuliaGiac/Giac.jl/issues/34)). `convert.(Float64, u)`
+  on a Giac list, `x .+ 1` and `sin.(x)` on a scalar `GiacExpr`, and
+  comprehensions over a `matrix[...]` (`[a for a in m]` gives a matrix of its
+  entries) now work. `GiacExpr` and `GiacMatrix` define `axes`,
+  `IteratorSize` and `broadcastable` according to their shape; `//` accepts
+  `GiacExpr` operands.
 
 - **`@giac_var` declares variables with assumptions, arrays of variables and
   renamed variables** ([#35](https://github.com/JuliaGiac/Giac.jl/pull/35),

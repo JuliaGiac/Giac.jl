@@ -431,11 +431,11 @@ function Giac.to_nemo(expr::GiacExpr, M::MatSpace)
     nr = nrows(M)
     nc = ncols(M)
     # expr is a Giac VECT of VECTs (rows). Length-check the structure.
-    length(expr) == nr ||
-        error("to_nemo: matrix has $(length(expr)) rows, expected $nr.")
+    Giac._vector_length(expr) == nr ||
+        error("to_nemo: matrix has $(Giac._vector_length(expr)) rows, expected $nr.")
     elems = elem_type(B)[]
     for i in 1:nr
-        row = expr[i]
+        row = Giac._vector_element(expr, i)
         length(row) == nc ||
             error("to_nemo: row $i has $(length(row)) cols, expected $nc.")
         for j in 1:nc

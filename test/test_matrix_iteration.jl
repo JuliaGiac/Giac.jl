@@ -59,7 +59,11 @@
     @testset "iterate on 1x1 and column vector" begin
         @giac_var x
         M11 = GiacMatrix([x;;])
-        @test collect(M11) == [M11[1, 1]]   # one element
+        # collect keeps the 2-D shape of a GiacMatrix (PR #33)
+        @test collect(M11) == [M11[1, 1];;]
+        @test size(collect(M11)) == (1, 1)
+        @test eltype(collect(M11)) == GiacExpr
+        @test Base.IteratorSize(GiacMatrix) == Base.HasShape{2}()
 
         V31 = GiacMatrix([x, 2*x, x^2])     # 3x1
         v = collect(V31)
