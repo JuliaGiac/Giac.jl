@@ -40,6 +40,7 @@ using LinearAlgebra
 
     # Macro tests (011-giac-symbol-macro)
     include("test_macros.jl")
+    include("test_giac_var_decl.jl")
 
     # Multivar derivative operator tests (068-multivar-d-operator)
     include("test_differential.jl")
