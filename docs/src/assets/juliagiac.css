@@ -1,5 +1,7 @@
-/* JuliaGiac identity for the Giac.jl documentation.
- * Palette from JuliaGiac/.github brand/README.md: Julia blue for links and
+/* Managed by JuliaGiac/site-kit (documenter/juliagiac.css). Edit it there, then run sync.jl. */
+/* JuliaGiac identity for package documentation built with Documenter.jl
+ * and DocumenterLandingPage.jl.
+ * Palette from brand/README.md: Julia blue for links and
  * accents, the Julia dot colours for the landing page name and glow.
  * Selectors carry an extra `html` / repeated class so they win over the
  * DocumenterLandingPage and Documenter theme rules whatever the load order. */
