@@ -16,6 +16,13 @@ hero:
     - theme: alt
       text: View on GitHub
       link: https://github.com/JuliaGiac/Giac.jl
+    - theme: alt
+      text: All JuliaGiac projects
+      link: https://juliagiac.github.io/
+  image:
+    src: /logo.svg
+    dark: /logo-dark.svg
+    alt: JuliaGiac
 
 features:
   - icon: 🧮

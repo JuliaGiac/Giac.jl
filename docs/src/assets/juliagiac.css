@@ -1,0 +1,22 @@
+/* JuliaGiac identity for the Giac.jl documentation.
+ * Palette from JuliaGiac/.github brand/README.md: Julia blue for links and
+ * accents, the Julia dot colours for the landing page name and glow.
+ * Selectors carry an extra `html` / repeated class so they win over the
+ * DocumenterLandingPage and Documenter theme rules whatever the load order. */
+html:root {
+    --landing-accent: #4063D8;
+    --landing-accent-contrast: #fff;
+    --landing-name-color: transparent;
+    --landing-name-background: linear-gradient(120deg, #4063D8, #9558B2 55%, #CB3C33);
+    --landing-glow: linear-gradient(-45deg, #9558B280 50%, #38982680 50%);
+}
+html.theme--documenter-dark.theme--documenter-dark {
+    --landing-accent: #8fa6ff;
+    --landing-accent-contrast: #16171a;
+    --landing-name-background: linear-gradient(120deg, #8fa6ff, #b98bd0 55%, #e27a72);
+}
+/* Documenter's dark theme uses teal links; use the light Julia blue. */
+/* The landing page (#landing) styles its own buttons and tiles. */
+html.theme--documenter-dark .docs-main a:not(.docs-heading-anchor):not(#landing a),
+html.theme--documenter-dark .docs-navbar a { color: #8fa6ff; }
+html.theme--documenter-dark .docs-main a:not(.docs-heading-anchor):not(#landing a):hover { color: #b3c3ff; }
