@@ -427,4 +427,56 @@ using Symbolics.SymbolicUtils: Term
         end
     end
 
+    # ============================================================================
+    # Issue #89: irrational constants in to_giac (Symbolics 7)
+    # ============================================================================
+    # With Symbolics 7, Num(pi) unwraps to identity(π) around the Irrational π.
+    # to_giac recursed on it forever (StackOverflowError) instead of mapping
+    # it to GIAC's constant.
+    @testset "Issue #89: to_giac on irrational constants" begin
+        @variables x
+        g(e) = string(Giac.giac_eval("evalf($(string(e)))"))
+        approx(e, v) = isapprox(parse(Float64, g(e)), v; rtol = 1e-10)
+
+        @testset "π" begin
+            r = to_giac(Num(pi))
+            @test string(r) == "pi"
+            @test approx(r, Float64(pi))
+        end
+
+        @testset "ℯ is exp(1), not an identifier named e" begin
+            r = to_giac(Num(ℯ))
+            @test string(r) == "e" || string(r) == "exp(1)"
+            @test approx(r, Float64(ℯ))
+        end
+
+        @testset "Euler's γ" begin
+            r = to_giac(Num(Base.MathConstants.eulergamma))
+            @test string(r) == "euler_gamma"
+            @test approx(r, Float64(Base.MathConstants.eulergamma))
+        end
+
+        @testset "golden ratio φ is exact" begin
+            r = to_giac(Num(Base.MathConstants.golden))
+            @test occursin("sqrt(5)", string(r))
+            @test approx(r, Float64(Base.MathConstants.golden))
+        end
+
+        @testset "constants inside expressions" begin
+            r = to_giac(x + pi)
+            @test string(Giac.giac_eval("normal($(string(r)) - (x+pi))")) == "0"
+            r = to_giac(2 * ℯ * x)
+            @test approx(Giac.giac_eval("subst($(string(r)),x,1)"), 2 * Float64(ℯ))
+        end
+
+        @testset "bare Irrational outside Num" begin
+            ext = Base.get_extension(Giac, :GiacSymbolicsExt)
+            @test Giac.GiacCxxBindings.to_string(ext._convert_to_gen(pi)) == "pi"
+        end
+
+        @testset "constant with no GIAC equivalent is an error, not a hang" begin
+            @test_throws ArgumentError to_giac(Num(Base.MathConstants.catalan))
+        end
+    end
+
 end  # @testset "Symbolics Extension"
