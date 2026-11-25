@@ -35,9 +35,9 @@ features:
     details: Exchange symbolic expressions with Symbolics.jl and work naturally with Julia functions and types.
     link: /extensions/symbolics/
   - icon: 📓
-    title: Pluto-ready
-    details: Explore symbolic mathematics interactively with reactive notebooks and automatic LaTeX rendering.
-    link: /pluto/
+    title: Reactive notebooks
+    details: Explore symbolic mathematics interactively in Pluto or KaimonSlate, with automatic LaTeX rendering.
+    link: /notebooks/
   - icon: 🖥️
     title: GiacSlate.jl
     details: Use Giac.jl through its integration with the KaimonSlate interactive computing environment.
@@ -72,7 +72,7 @@ Giac.jl wraps the [Giac](https://www-fourier.ujf-grenoble.fr/~parisse/giac.html)
 - **Type Conversion**: Convert results to Julia native types (Int64, Float64, Rational)
 - **Symbolics.jl Integration**: Bidirectional conversion with Symbolics.jl
 - **Tables.jl Compatibility**: Convert GiacMatrix and command help to DataFrames, CSV export
-- **LaTeX Support**: Automatic LaTeX rendering in Pluto notebooks
+- **LaTeX Support**: Automatic LaTeX rendering in Pluto and KaimonSlate notebooks
 
 ## Installation
 
