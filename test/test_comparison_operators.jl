@@ -176,3 +176,30 @@ using Giac.Commands: assume, about, sign, purge, additionally
     end
 
 end
+
+# Approximate equality (from the `ergonomics` branch by Kahli Burke)
+@testset "approximate equality" begin
+    @giac_var x y
+    N(v) = convert(GiacExpr, v)
+    p = N(π)
+    # without symbols: by numeric value, with Julia's tolerances
+    @test sqrt(N(3)) ≈ N(3) / sqrt(N(3))
+    @test sqrt(N(2)) ≈ 1.4142135623730951
+    @test !(sqrt(N(2)) ≈ 1.41)
+    @test isapprox(sqrt(N(2)), 1.41; atol = 0.01)
+    @test !(p ≈ 355 // 113)
+    @test isapprox(p, 355 // 113; rtol = 1e-6)
+    @test !(N(1e-12) ≈ 0)
+    @test isapprox(N(1e-12), 0; atol = 1e-9)
+    @test exp(im * p) ≈ -1
+    @test 1.4142135623730951 ≈ sqrt(N(2))
+    # in symbols: equal, or the coefficients of the monomials approximately so
+    @test sin(x)^2 + cos(x)^2 ≈ 1
+    @test 2.0sin(x) ≈ 2sin(x)
+    @test (x + 1e-12)^2 ≈ x^2 + 2e-12x
+    @test 1.0000000001x + y ≈ x + y
+    @test !(1.001x + y ≈ x + y)
+    @test !(x ≈ x + 1)
+    @test 1.0000000001sin(x) + y ≈ sin(x) + y
+    @test !(sin(x) ≈ cos(x))
+end

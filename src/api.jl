@@ -29,7 +29,8 @@ julia> giac_eval("factor(x^2-1)")
 GiacExpr: (x-1)*(x+1)
 ```
 """
-function giac_eval(expr::String, ctx::GiacContext=DEFAULT_CONTEXT[])::GiacExpr
+function giac_eval(expr::AbstractString, ctx::GiacContext=DEFAULT_CONTEXT[])::GiacExpr
+    expr = String(expr)
     if isempty(expr)
         throw(GiacError("Empty expression", :parse))
     end

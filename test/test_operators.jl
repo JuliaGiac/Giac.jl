@@ -38,6 +38,13 @@
         @test (a == b) isa Bool
     end
 
+    @testset "Constructing from numbers" begin
+        @test string(GiacExpr(3 // 4)) == "3/4"
+        @test string(GiacExpr(2)) == "2"
+        @test string.(GiacExpr.([1//2 1; 0 2//3])) == ["1/2" "1"; "0" "2/3"]
+        @test GiacExpr(3 // 4) isa GiacExpr
+    end
+
     @testset "Hash" begin
         # Test that GiacExpr can be hashed
         a = giac_eval("x^2")

@@ -9,6 +9,9 @@
 
         # Test empty string throws error
         @test_throws GiacError giac_eval("")
+
+        # any string, such as a piece of one
+        @test string(giac_eval(split("x+1 y")[1])) == "x+1"
     end
 
     @testset "to_julia" begin

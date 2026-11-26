@@ -71,6 +71,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Approximate equality, `a ≈ b`, for Giac expressions** (design and tests by
+  Kahli Burke, from the `ergonomics` branch). Expressions without free symbols
+  compare by numeric value with Julia's tolerances (`sqrt(GiacExpr(2)) ≈
+  1.4142135623730951`); expressions in symbols are approximately equal when
+  they are equal or when the numeric coefficients of their monomials are
+  (`1.0000000001x + y ≈ x + y`). Also against Julia numbers, in either order.
+- **`GiacExpr(x)` for any Julia number** (Kahli Burke): the same as
+  `convert(GiacExpr, x)`, so `GiacExpr(3//4)` and `GiacExpr.(M)` for a numeric
+  matrix work.
+- **`giac_eval` accepts any string** (Kahli Burke), such as a `SubString` from
+  `split`.
+
 - **Broadcasting over Giac lists and matrices** ([#33](https://github.com/JuliaGiac/Giac.jl/pull/33),
   fixes [#20](https://github.com/JuliaGiac/Giac.jl/issues/20) and
   [#34](https://github.com/JuliaGiac/Giac.jl/issues/34)). `convert.(Float64, u)`
