@@ -541,12 +541,10 @@ function _giac_rational_den(ptr::Ptr{Cvoid})::Int64
 end
 
 # Matrix operations
-function _giac_free_matrix(ptr::Ptr{Cvoid})
-    if ptr == C_NULL
-        return
-    end
-    nothing
-end
+# A matrix that owns its handle (one built from an expression borrows that
+# expression's, and has no finalizer) releases it like an expression does.
+# Called from finalizers: queued, see `_doom`
+_giac_free_matrix(ptr::Ptr{Cvoid}) = _giac_free_expr(ptr)
 
 function _giac_gcd(a_ptr::Ptr{Cvoid}, b_ptr::Ptr{Cvoid}, ctx_ptr::Ptr{Cvoid})::Ptr{Cvoid}
     a_str = _giac_expr_to_string(a_ptr)

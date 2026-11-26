@@ -69,6 +69,21 @@
         @test v.cpp_object == C_NULL
     end
 
+    @testset "a matrix releases its expression when collected" begin
+        m = GiacMatrix([1 2; 3 4])
+        id = UInt(m.ptr)
+        @test haskey(Giac._gen_objects, id)
+        finalize(m)
+        drain!()
+        @test !haskey(Giac._gen_objects, id)
+        # a matrix read from an expression borrows the expression's value
+        e = giac_eval("[[1,2],[3,4]]")
+        m2 = GiacMatrix(e)
+        finalize(m2)
+        drain!()
+        @test string(e) == "[[1,2],[3,4]]"
+    end
+
     @testset "a finalizer run from another task while GIAC is held does not block" begin
         e = giac_eval("thr_c + 2")
         id = UInt(e.ptr)
