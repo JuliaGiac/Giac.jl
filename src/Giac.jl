@@ -73,6 +73,7 @@ include("namespace_commands.jl")
 include("api.jl")
 include("operators.jl")
 include("macros.jl")
+include("exact_literals.jl")
 include("decl.jl")
 include("tables.jl")
 include("substitute.jl")
@@ -115,6 +116,7 @@ export giac_eval, to_julia, list_commands, help_count
 
 # Macros (011-giac-symbol-macro, 012-giac-several-var)
 export @giac_var, @giac_several_vars
+export @exact
 
 # Command invocation (009-commands-submodule)
 # invoke_cmd replaces giac_cmd - available from main module and Giac.Commands

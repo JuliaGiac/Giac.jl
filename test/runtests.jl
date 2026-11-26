@@ -156,6 +156,12 @@ using LinearAlgebra
     include("test_constants.jl")
 
     # ============================================================================
+    # Exact literals (@exact)
+    # Verifies decimal literals, π, ℯ and roots of integer literals stay exact
+    # ============================================================================
+    include("test_exact_literals.jl")
+
+    # ============================================================================
     # Held Command Display Tests (055-held-cmd-display)
     # Verifies HeldCmd type, hold_cmd, release, LaTeX and plain text display
     # ============================================================================
