@@ -363,6 +363,10 @@ x + (1 + 2im)                          # x+1+2*i (Complex)
 x + π                                  # x+pi (Irrational)
 x * ℯ                                  # e*x (Euler's number)
 
+# Decimals stay exact under @exact (0.1 alone is a binary float)
+@exact 0.1 + 0.2                       # 3/10
+@exact 0.5x^2 + 2π * x                 # 1/2*x^2+2*pi*x
+
 # Or use invoke_cmd for any command
 invoke_cmd(:factor, giac_eval("x^2 - 1"))  # (x-1)*(x+1)
 
@@ -372,6 +376,8 @@ to_julia(giac_eval("3/4"))   # 3//4::Rational{Int64}
 # or using |> operator
 giac_eval("3/4") |> to_julia
 ```
+
+To write decimals and keep them exact, see [Exact Numbers](@ref) and [`@exact`](@ref).
 
 
 ---
@@ -4063,6 +4069,89 @@ f(0, 0)        # Returns "f(0,0)"
 f(a, b)        # Returns "f(a,b)"
 f(1, 2)        # Returns "f(1,2)"
 ```
+
+## Exact Numbers
+
+A decimal literal is a binary floating-point number before Giac sees it:
+`0.1` is the double nearest ``1/10``, and `0.1 + 0.2` is `0.30000000000000004`
+in Julia. Giac keeps such a number as a float, and its doubles carry fewer
+mantissa bits than Julia's `Float64` (some bits hold the type tag), so what
+Giac computes from them is good to about 12 significant digits:
+`sqrt(convert(GiacExpr, 2.0))` differs from Julia's `sqrt(2.0)` by about
+`3e-12`. The same goes for `2π` (a `Float64` product, computed before any Giac
+code runs) and for `sqrt(2)` or `1/2` of integer literals.
+
+`@exact` rewrites the numbers of the code it is given into exact Giac numbers
+before Julia computes with them. It is the recommended way to write decimals
+in symbolic code:
+
+```julia
+using Giac
+using Giac.Commands: factor, solve
+@giac_var x
+
+0.1 + 0.2                        # 0.30000000000000004 (a Julia Float64)
+@exact 0.1 + 0.2                 # 3/10
+
+2π * x                           # 6.283185307179586*x
+@exact 2π * x                    # 2*pi*x
+
+solve(x^2 - 0.5, x)              # list[-0.707106781187,0.707106781187]
+@exact solve(x^2 - 0.5, x)       # list[-1/2*sqrt(2),1/2*sqrt(2)]
+
+factor(x^2 + 0.1x)               # x*(x+0.1)
+@exact factor(x^2 + 0.1x)        # x*(10*x+1)/10
+
+@exact exp(0.5) + sqrt(2) / 2    # exp(1/2)+sqrt(2)/2
+```
+
+```@docs
+@exact
+```
+
+What is rewritten, each into a `GiacExpr`:
+
+| Written | Under `@exact` | Without it |
+|---------|----------------|------------|
+| `0.1`, `2.5e-3`, `1.5f0` | `1/10`, `1/400`, `3/2`: the shortest decimal form, the digits Julia prints | the binary double |
+| `big(0.1)`, `big"0.1"` | `1/10` | a `BigFloat` |
+| `π`, `pi`, `ℯ` | Giac's `pi` and `exp(1)` | an `Irrational`, a float once multiplied |
+| `sqrt(2)`, `cbrt(2)` | `sqrt(2)`, `2^(1/3)` | `1.4142135623730951`, `1.2599210498948732` |
+| `2^(1/3)`, `2^-1` | `2^(1/3)`, `1/2` | `1.2599210498948732`, `0.5` |
+| `1/2` | `1/2` | `0.5` |
+
+What is left as written:
+
+- **Integers** and integer arithmetic: `@exact 2 * 3` is the Julia `6`, and an
+  integer literal too large for `Int` stays an `Int128` or a `BigInt`, which
+  Giac receives exactly. Julia's integer overflow still applies, so write
+  `big(10)^20` rather than `10^20`.
+- **Floats that are not literals**: with `y = 0.1`, `@exact y * x` keeps the
+  float held by `y`; only the digits written inside the macro call are read.
+  For a float computed elsewhere, Giac's `exact` command
+  (`Giac.Commands.exact(convert(GiacExpr, y))`) gives a nearby fraction.
+- **Qualified constants** (`Base.pi`), **quoted code** (`:(0.1)`), and the
+  code of **other macros** inside the expression: put `@exact` inside the
+  other macro call rather than around it. A nested `@exact` expands on its own.
+
+A name assigned by the macro's own assignments (in its block, not in a loop
+or function inside it) is bound to the Giac number, so what is computed from
+it later is exact as well:
+
+```julia
+@exact begin
+    h = 0.1                      # 1/10, a GiacExpr
+    three = 3                    # a Giac 3: sqrt(three) is sqrt(3)
+end
+```
+
+Every literal of the expression is rewritten, so keep numeric code such as
+ranges, tolerances or plotting outside `@exact`.
+
+!!! note "IntervalArithmetic.jl"
+    IntervalArithmetic.jl also exports a macro named `@exact`, which keeps
+    the binary value of each float. With both packages loaded, write
+    `Giac.@exact`.
 
 ## Calculus Operations
 
