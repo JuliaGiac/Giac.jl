@@ -211,6 +211,15 @@ using LinearAlgebra
     include("test_nemo_conversion.jl")
 
     # ============================================================================
+    # Extensions under concurrency
+    # Every wrapper call in ext/*.jl happens under the GIAC lock (a static check
+    # of the sources), and the conversions of each extension in the test target
+    # survive several tasks, GIAC evaluation and collections at once. The SymPy
+    # bridge's counterpart is in test/test_sympy_conversion.jl.
+    # ============================================================================
+    include("test_extensions_threads.jl")
+
+    # ============================================================================
     # Doctests
     # Runs jldoctest blocks in Giac docstrings via Documenter.doctest
     # ============================================================================
