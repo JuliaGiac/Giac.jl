@@ -131,7 +131,7 @@ function _ptr_to_gen(g::GiacExpr)
             return gen
         end
         # Fallback: eval from string representation
-        return GiacCxxBindings.giac_eval(string(g))
+        return with_giac_lock(() -> GiacCxxBindings.giac_eval(string(g)))
     end
     return nothing
 end

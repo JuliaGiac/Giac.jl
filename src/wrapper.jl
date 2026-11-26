@@ -271,24 +271,80 @@ end
 
 # Store a CxxWrap Gen object and return a handle pointer
 function _make_gen_ptr(gen)::Ptr{Cvoid}
-    _gen_counter[] += 1
-    id = _gen_counter[]
-    _gen_objects[id] = gen
-    return Ptr{Cvoid}(id)
+    return with_giac_lock() do
+        id = (_gen_counter[] += 1)
+        _gen_objects[id] = gen
+        Ptr{Cvoid}(id)
+    end
 end
 
 # Retrieve a stored Gen object, or nothing if not found
-function _get_gen(ptr::Ptr{Cvoid})
-    return get(_gen_objects, UInt(ptr), nothing)
+_get_gen(ptr::Ptr{Cvoid}) = with_giac_lock(() -> get(_gen_objects, UInt(ptr), nothing))
+
+# ----------------------------------------------------------------------------
+# Freeing GIAC objects
+#
+# GIAC is not thread-safe, and its objects share reference-counted parts. Finalizers run on
+# whichever thread collects garbage, possibly while another thread is inside GIAC, so a finalizer
+# only queues what is to be freed. The next thread to take the GIAC lock frees it
+# (`with_giac_lock`). The queue is guarded by a spin lock, which finalizers may take.
+# ----------------------------------------------------------------------------
+
+const _DOOMED = Ref{Vector{Any}}(Any[])
+const _DOOMED_LOCK = Threads.SpinLock()
+const _DOOMED_COUNT = Threads.Atomic{Int}(0)
+
+# a handle in `_gen_objects` or `_context_objects` whose expression or context is unreachable
+struct _GenHandle; id::UInt; end
+struct _ContextHandle; id::UInt; end
+
+function _doom(x)
+    lock(_DOOMED_LOCK)
+    try
+        push!(_DOOMED[], x)
+        Threads.atomic_add!(_DOOMED_COUNT, 1)
+    finally
+        unlock(_DOOMED_LOCK)
+    end
+    return nothing
+end
+
+# CxxWrap's finalizer for a wrapped C++ object
+GiacCxxBindings.CxxWrap.CxxWrapCore.delete(x::Union{GiacCxxBindings.GenAllocated, GiacCxxBindings.GiacContextAllocated}) = _doom(x)
+
+# With the GIAC lock held: free what finalizers queued
+function _free_doomed!()
+    _DOOMED_COUNT[] == 0 && return nothing
+    fresh = Any[]
+    lock(_DOOMED_LOCK)
+    batch = _DOOMED[]
+    _DOOMED[] = fresh
+    _DOOMED_COUNT[] = 0
+    unlock(_DOOMED_LOCK)
+    foreach(_free_now, batch)
+    return nothing
+end
+
+# A handle only drops the table's reference: the Gen may be shared, and is freed by its own
+# finalizer once unreachable
+_free_now(h::_GenHandle) = (delete!(_gen_objects, h.id); nothing)
+_free_now(h::_ContextHandle) = (delete!(_context_objects, h.id); nothing)
+function _free_now(x)
+    x.cpp_object == C_NULL && return nothing
+    GiacCxxBindings.CxxWrap.CxxWrapCore.__delete(GiacCxxBindings.CxxWrap.CxxPtr(x))
+    x.cpp_object = C_NULL
+    return nothing
 end
 
 # Get string representation of the expression stored at ptr
 function _get_expr_string(ptr::Ptr{Cvoid})::String
-    gen = _get_gen(ptr)
-    if gen !== nothing
-        return String(GiacCxxBindings.to_string(gen))
+    return with_giac_lock() do
+        gen = _get_gen(ptr)
+        if gen !== nothing
+            return String(GiacCxxBindings.to_string(gen))
+        end
+        return "<unknown>"
     end
-    return "<unknown>"
 end
 
 # ---------------------------------------------------------------------------
@@ -323,23 +379,26 @@ Falls back to the shared sentinel when the library is unavailable.
 """
 function _new_giac_context()::Ptr{Cvoid}
     GiacCxxBindings._have_library || return _SHARED_CONTEXT_PTR
-    _context_counter[] += 1
-    id = _context_counter[]
-    _context_objects[id] = GiacCxxBindings.GiacContext()
-    return Ptr{Cvoid}(id)
+    return with_giac_lock() do
+        id = (_context_counter[] += 1)
+        _context_objects[id] = GiacCxxBindings.GiacContext()
+        Ptr{Cvoid}(id)
+    end
 end
 
 # The C++ context behind a handle, or `nothing` for the shared one.
 function _get_context(ptr::Ptr{Cvoid})
     ptr == _SHARED_CONTEXT_PTR && return nothing
-    return get(_context_objects, UInt(ptr), nothing)
+    return with_giac_lock(() -> get(_context_objects, UInt(ptr), nothing))
 end
 
 function _giac_eval_string(expr::String, ctx_ptr::Ptr{Cvoid})::Ptr{Cvoid}
-    ctx = _get_context(ctx_ptr)
-    gen = ctx === nothing ? GiacCxxBindings.giac_eval(expr) :
-                            GiacCxxBindings.giac_eval(expr, ctx)
-    return _make_gen_ptr(gen)
+    return with_giac_lock() do
+        ctx = _get_context(ctx_ptr)
+        gen = ctx === nothing ? GiacCxxBindings.giac_eval(expr) :
+                                GiacCxxBindings.giac_eval(expr, ctx)
+        return _make_gen_ptr(gen)
+    end
 end
 
 """
@@ -356,21 +415,15 @@ function _giac_expr_to_string(ptr::Ptr{Cvoid})::String
     return _get_expr_string(ptr)
 end
 
+# Called from finalizers: queued, see `_doom`
 function _giac_free_expr(ptr::Ptr{Cvoid})
-    if ptr == C_NULL
-        return
-    end
-    delete!(_gen_objects, UInt(ptr))
-    nothing
+    ptr == C_NULL || _doom(_GenHandle(UInt(ptr)))
+    return nothing
 end
 
 function _giac_free_context(ptr::Ptr{Cvoid})
-    if ptr == C_NULL || ptr == _SHARED_CONTEXT_PTR
-        return
-    end
-    # Dropping the last reference lets CxxWrap destroy the giac::context.
-    delete!(_context_objects, UInt(ptr))
-    nothing
+    (ptr == C_NULL || ptr == _SHARED_CONTEXT_PTR) || _doom(_ContextHandle(UInt(ptr)))
+    return nothing
 end
 
 function _giac_expr_type(ptr::Ptr{Cvoid})::Symbol
@@ -410,71 +463,79 @@ function _giac_to_float64(ptr::Ptr{Cvoid})::Float64
 end
 
 function _giac_complex_real(ptr::Ptr{Cvoid})::Float64
-    try
-        expr_str = _giac_expr_to_string(ptr)
-        gen = GiacCxxBindings.giac_eval(expr_str)
-        # Use cplx_re accessor
-        re_gen = GiacCxxBindings.cplx_re(gen)
-        re_str = GiacCxxBindings.to_string(re_gen)
-        return parse(Float64, re_str)
-    catch e
-        @debug "Complex real extraction failed: $e"
-        return 0.0
+    return with_giac_lock() do
+        try
+            expr_str = _giac_expr_to_string(ptr)
+            gen = GiacCxxBindings.giac_eval(expr_str)
+            # Use cplx_re accessor
+            re_gen = GiacCxxBindings.cplx_re(gen)
+            re_str = GiacCxxBindings.to_string(re_gen)
+            return parse(Float64, re_str)
+        catch e
+            @debug "Complex real extraction failed: $e"
+            return 0.0
+        end
     end
 end
 
 function _giac_complex_imag(ptr::Ptr{Cvoid})::Float64
-    try
-        expr_str = _giac_expr_to_string(ptr)
-        gen = GiacCxxBindings.giac_eval(expr_str)
-        # Use cplx_im accessor
-        im_gen = GiacCxxBindings.cplx_im(gen)
-        im_str = GiacCxxBindings.to_string(im_gen)
-        return parse(Float64, im_str)
-    catch e
-        @debug "Complex imag extraction failed: $e"
-        return 0.0
+    return with_giac_lock() do
+        try
+            expr_str = _giac_expr_to_string(ptr)
+            gen = GiacCxxBindings.giac_eval(expr_str)
+            # Use cplx_im accessor
+            im_gen = GiacCxxBindings.cplx_im(gen)
+            im_str = GiacCxxBindings.to_string(im_gen)
+            return parse(Float64, im_str)
+        catch e
+            @debug "Complex imag extraction failed: $e"
+            return 0.0
+        end
     end
 end
 
 function _giac_rational_num(ptr::Ptr{Cvoid})::Int64
-    try
-        expr_str = _giac_expr_to_string(ptr)
-        gen = GiacCxxBindings.giac_eval(expr_str)
-        # Use frac_num accessor
-        num_gen = GiacCxxBindings.frac_num(gen)
-        num_str = GiacCxxBindings.to_string(num_gen)
-        return parse(Int64, num_str)
-    catch e
-        @debug "Rational numerator extraction failed: $e"
-        # Fallback to string parsing
-        expr_str = _giac_expr_to_string(ptr)
-        parts = split(expr_str, "/")
-        if length(parts) == 2
-            return parse(Int64, parts[1])
+    return with_giac_lock() do
+        try
+            expr_str = _giac_expr_to_string(ptr)
+            gen = GiacCxxBindings.giac_eval(expr_str)
+            # Use frac_num accessor
+            num_gen = GiacCxxBindings.frac_num(gen)
+            num_str = GiacCxxBindings.to_string(num_gen)
+            return parse(Int64, num_str)
+        catch e
+            @debug "Rational numerator extraction failed: $e"
+            # Fallback to string parsing
+            expr_str = _giac_expr_to_string(ptr)
+            parts = split(expr_str, "/")
+            if length(parts) == 2
+                return parse(Int64, parts[1])
+            end
         end
+        return 0
     end
-    return 0
 end
 
 function _giac_rational_den(ptr::Ptr{Cvoid})::Int64
-    try
-        expr_str = _giac_expr_to_string(ptr)
-        gen = GiacCxxBindings.giac_eval(expr_str)
-        # Use frac_den accessor
-        den_gen = GiacCxxBindings.frac_den(gen)
-        den_str = GiacCxxBindings.to_string(den_gen)
-        return parse(Int64, den_str)
-    catch e
-        @debug "Rational denominator extraction failed: $e"
-        # Fallback to string parsing
-        expr_str = _giac_expr_to_string(ptr)
-        parts = split(expr_str, "/")
-        if length(parts) == 2
-            return parse(Int64, parts[2])
+    return with_giac_lock() do
+        try
+            expr_str = _giac_expr_to_string(ptr)
+            gen = GiacCxxBindings.giac_eval(expr_str)
+            # Use frac_den accessor
+            den_gen = GiacCxxBindings.frac_den(gen)
+            den_str = GiacCxxBindings.to_string(den_gen)
+            return parse(Int64, den_str)
+        catch e
+            @debug "Rational denominator extraction failed: $e"
+            # Fallback to string parsing
+            expr_str = _giac_expr_to_string(ptr)
+            parts = split(expr_str, "/")
+            if length(parts) == 2
+                return parse(Int64, parts[2])
+            end
         end
+        return 1
     end
-    return 1
 end
 
 # Matrix operations
@@ -673,57 +734,63 @@ end
 
 # Helper: retrieve stored Gen (or eval from string), apply function, store result Gen
 function _tier1_unary(func::Function, expr_ptr::Ptr{Cvoid})::Ptr{Cvoid}
-    try
-        gen_arg = _get_gen(expr_ptr)
-        if gen_arg === nothing
-            gen_arg = GiacCxxBindings.giac_eval(_get_expr_string(expr_ptr))
+    return with_giac_lock() do
+        try
+            gen_arg = _get_gen(expr_ptr)
+            if gen_arg === nothing
+                gen_arg = GiacCxxBindings.giac_eval(_get_expr_string(expr_ptr))
+            end
+            result_gen = func(gen_arg)
+            return _make_gen_ptr(result_gen)
+        catch e
+            @debug "Tier 1 function failed: $e"
         end
-        result_gen = func(gen_arg)
-        return _make_gen_ptr(result_gen)
-    catch e
-        @debug "Tier 1 function failed: $e"
+        return C_NULL
     end
-    return C_NULL
 end
 
 function _tier1_binary(func::Function, a_ptr::Ptr{Cvoid}, b_ptr::Ptr{Cvoid})::Ptr{Cvoid}
-    try
-        a_gen = _get_gen(a_ptr)
-        if a_gen === nothing
-            a_gen = GiacCxxBindings.giac_eval(_get_expr_string(a_ptr))
+    return with_giac_lock() do
+        try
+            a_gen = _get_gen(a_ptr)
+            if a_gen === nothing
+                a_gen = GiacCxxBindings.giac_eval(_get_expr_string(a_ptr))
+            end
+            b_gen = _get_gen(b_ptr)
+            if b_gen === nothing
+                b_gen = GiacCxxBindings.giac_eval(_get_expr_string(b_ptr))
+            end
+            result_gen = func(a_gen, b_gen)
+            return _make_gen_ptr(result_gen)
+        catch e
+            @debug "Tier 1 binary function failed: $e"
         end
-        b_gen = _get_gen(b_ptr)
-        if b_gen === nothing
-            b_gen = GiacCxxBindings.giac_eval(_get_expr_string(b_ptr))
-        end
-        result_gen = func(a_gen, b_gen)
-        return _make_gen_ptr(result_gen)
-    catch e
-        @debug "Tier 1 binary function failed: $e"
+        return C_NULL
     end
-    return C_NULL
 end
 
 function _tier1_ternary(func::Function, a_ptr::Ptr{Cvoid}, b_ptr::Ptr{Cvoid}, c_ptr::Ptr{Cvoid})::Ptr{Cvoid}
-    try
-        a_gen = _get_gen(a_ptr)
-        if a_gen === nothing
-            a_gen = GiacCxxBindings.giac_eval(_get_expr_string(a_ptr))
+    return with_giac_lock() do
+        try
+            a_gen = _get_gen(a_ptr)
+            if a_gen === nothing
+                a_gen = GiacCxxBindings.giac_eval(_get_expr_string(a_ptr))
+            end
+            b_gen = _get_gen(b_ptr)
+            if b_gen === nothing
+                b_gen = GiacCxxBindings.giac_eval(_get_expr_string(b_ptr))
+            end
+            c_gen = _get_gen(c_ptr)
+            if c_gen === nothing
+                c_gen = GiacCxxBindings.giac_eval(_get_expr_string(c_ptr))
+            end
+            result_gen = func(a_gen, b_gen, c_gen)
+            return _make_gen_ptr(result_gen)
+        catch e
+            @debug "Tier 1 ternary function failed: $e"
         end
-        b_gen = _get_gen(b_ptr)
-        if b_gen === nothing
-            b_gen = GiacCxxBindings.giac_eval(_get_expr_string(b_ptr))
-        end
-        c_gen = _get_gen(c_ptr)
-        if c_gen === nothing
-            c_gen = GiacCxxBindings.giac_eval(_get_expr_string(c_ptr))
-        end
-        result_gen = func(a_gen, b_gen, c_gen)
-        return _make_gen_ptr(result_gen)
-    catch e
-        @debug "Tier 1 ternary function failed: $e"
+        return C_NULL
     end
-    return C_NULL
 end
 
 # Trigonometry (Tier 1)
@@ -776,16 +843,20 @@ _giac_pow_tier1(base_ptr::Ptr{Cvoid}, exp_ptr::Ptr{Cvoid}) = _tier1_binary(GiacC
 
 # Resolve a GiacExpr to its CxxWrap Gen, falling back to giac_eval if no cached Gen.
 function _get_gen_or_eval(expr::GiacExpr)
-    g = _get_gen(expr.ptr)
-    return g === nothing ? GiacCxxBindings.giac_eval(_get_expr_string(expr.ptr)) : g
+    return with_giac_lock() do
+        g = _get_gen(expr.ptr)
+        return g === nothing ? GiacCxxBindings.giac_eval(_get_expr_string(expr.ptr)) : g
+    end
 end
 
 # Resolve any value (GiacExpr or numeric/symbolic scalar) to a CxxWrap Gen.
 # Non-GiacExpr values are routed through _arg_to_giac_string + giac_eval, matching
 # the existing dict-form contract that accepts e.g. Dict(x => 2).
 function _value_to_gen(v)
-    return v isa GiacExpr ? _get_gen_or_eval(v) :
-                            GiacCxxBindings.giac_eval(_arg_to_giac_string(v))
+    return with_giac_lock() do
+        return v isa GiacExpr ? _get_gen_or_eval(v) :
+                                GiacCxxBindings.giac_eval(_arg_to_giac_string(v))
+    end
 end
 
 # Direct vector-argument substitution: calls GiacCxxBindings.giac_subst with
@@ -795,21 +866,21 @@ end
 function _giac_subst_vec_tier1(expr::GiacExpr,
                                vars::AbstractVector{<:GiacExpr},
                                vals::AbstractVector)::GiacExpr
-    expr_gen = _get_gen_or_eval(expr)
-    var_gens = StdVector{GiacCxxBindings.Gen}()
-    val_gens = StdVector{GiacCxxBindings.Gen}()
-    for v in vars
-        push!(var_gens, _get_gen_or_eval(v))
+    return with_giac_lock() do
+        expr_gen = _get_gen_or_eval(expr)
+        var_gens = StdVector{GiacCxxBindings.Gen}()
+        val_gens = StdVector{GiacCxxBindings.Gen}()
+        for v in vars
+            push!(var_gens, _get_gen_or_eval(v))
+        end
+        for w in vals
+            push!(val_gens, _value_to_gen(w))
+        end
+        vars_vect = GiacCxxBindings.make_vect(var_gens, Int32(0))
+        vals_vect = GiacCxxBindings.make_vect(val_gens, Int32(0))
+        result_gen = GiacCxxBindings.giac_subst(expr_gen, vars_vect, vals_vect)
+        return GiacExpr(_make_gen_ptr(result_gen))
     end
-    for w in vals
-        push!(val_gens, _value_to_gen(w))
-    end
-    vars_vect = GiacCxxBindings.make_vect(var_gens, Int32(0))
-    vals_vect = GiacCxxBindings.make_vect(val_gens, Int32(0))
-    result_gen = with_giac_lock() do
-        GiacCxxBindings.giac_subst(expr_gen, vars_vect, vals_vect)
-    end
-    return GiacExpr(_make_gen_ptr(result_gen))
 end
 
 # ============================================================================

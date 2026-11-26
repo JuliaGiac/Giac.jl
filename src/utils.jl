@@ -15,6 +15,7 @@ Ensures thread-safe access to GIAC library.
 """
 function with_giac_lock(f)
     lock(GIAC_LOCK) do
+        _free_doomed!()          # objects finalizers left to free, see wrapper.jl
         f()
     end
 end
