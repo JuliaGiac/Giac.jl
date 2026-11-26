@@ -22,7 +22,7 @@ Recursively convert a GIAC expression to native Julia types.
 | `INT` | `Int64` |
 | `ZINT` | `BigInt` |
 | `DOUBLE`, `REAL` | `Float64` |
-| `FRAC` | `Rational{Int64}` or `Rational{BigInt}` |
+| `FRAC` | `Rational{Int64}` or `Rational{BigInt}`, or a `Complex` of one |
 | `CPLX` | `Complex{T}` (T promoted from parts) |
 | `VECT` | `Vector{T}` (T narrowed from elements) |
 | `STRNG` | `String` (the characters, without GIAC's quotes) |
@@ -336,23 +336,15 @@ end
 # Compound Type Conversion Helpers
 # ============================================================================
 
+# A complex rational is a FRAC with a Gaussian-integer numerator, so this returns a
+# `Complex{Rational}` for one.
 function _convert_to_rational(g::GiacExpr)
-    num_expr = numer(g)
-    den_expr = denom(g)
-
-    num_type = giac_type(num_expr)
-    den_type = giac_type(den_expr)
-
-    # Check if either is BigInt (ZINT)
-    if num_type == ZINT || den_type == ZINT
-        num = to_julia(num_expr)::Union{Int64, BigInt}
-        den = to_julia(den_expr)::Union{Int64, BigInt}
-        return Rational{BigInt}(BigInt(num), BigInt(den))
-    else
-        num = _convert_to_int64(num_expr)
-        den = _convert_to_int64(den_expr)
-        return Rational{Int64}(num, den)
-    end
+    num = to_julia(numer(g))
+    den = to_julia(denom(g))
+    GaussianInteger = Union{Integer, Complex{<:Integer}}
+    (num isa GaussianInteger && den isa GaussianInteger) ||
+        throw(GiacError("Cannot read $(string(g)) as a fraction of integers", :type))
+    return num // den
 end
 
 function _convert_to_complex(g::GiacExpr)

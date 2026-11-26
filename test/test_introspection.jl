@@ -531,6 +531,8 @@
         # Pre-existing numeric / boolean / vector paths are untouched.
         @test to_julia(giac_eval("42"))  === 42
         @test to_julia(giac_eval("3/4")) === 3//4
+        @test to_julia(giac_eval("1/3 + 2/5*i")) === 1//3 + 2//5 * im
+        @test to_julia(giac_eval("2^70/3")) == big(2)^70 // 3
         @test to_julia(giac_eval("true"))
         @test to_julia(giac_eval("[1,2,3]")) == [1, 2, 3]
     end
