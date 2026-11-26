@@ -581,6 +581,14 @@ function _mathjson_to_gen(expr::FunctionExpr)
     return Giac.GiacCxxBindings.make_symbolic_unevaluated(giac_op, args_vec)
 end
 
+# Build the whole GIAC tree under the GIAC lock: every node is a wrapper call.
+# The helpers above that make wrapper calls expect their caller to hold it.
+function _locked_to_giac(expr::AbstractMathJSONExpr)::GiacExpr
+    return Giac.with_giac_lock() do
+        GiacExpr(Giac._gen_to_ptr(_mathjson_to_gen(expr)))
+    end
+end
+
 # ============================================================================
 # Public API: to_mathjson
 # ============================================================================
@@ -603,8 +611,11 @@ to_mathjson(giac_eval("pi"))   # SymbolExpr("Pi")
 ```
 """
 function Giac.to_mathjson(expr::GiacExpr)::AbstractMathJSONExpr
-    gen = Giac._ptr_to_gen(expr)
-    return _gen_to_mathjson(gen)
+    # The walk reads GIAC objects at every node: under the GIAC lock, with
+    # `expr` kept alive. Building the MathJSON nodes is plain Julia.
+    return GC.@preserve expr Giac.with_giac_lock() do
+        _gen_to_mathjson(Giac._ptr_to_gen(expr))
+    end
 end
 
 """
@@ -642,9 +653,7 @@ end
 Convert a MathJSON NumberExpr to a GiacExpr.
 """
 function Giac.to_giac(expr::NumberExpr)::GiacExpr
-    gen = _mathjson_to_gen(expr)
-    ptr = Giac._gen_to_ptr(gen)
-    return GiacExpr(ptr)
+    return _locked_to_giac(expr)
 end
 
 """
@@ -653,9 +662,7 @@ end
 Convert a MathJSON SymbolExpr to a GiacExpr.
 """
 function Giac.to_giac(expr::SymbolExpr)::GiacExpr
-    gen = _mathjson_to_gen(expr)
-    ptr = Giac._gen_to_ptr(gen)
-    return GiacExpr(ptr)
+    return _locked_to_giac(expr)
 end
 
 """
@@ -671,9 +678,7 @@ to_giac(expr)  # GiacExpr: x+1
 ```
 """
 function Giac.to_giac(expr::FunctionExpr)::GiacExpr
-    gen = _mathjson_to_gen(expr)
-    ptr = Giac._gen_to_ptr(gen)
-    return GiacExpr(ptr)
+    return _locked_to_giac(expr)
 end
 
 """

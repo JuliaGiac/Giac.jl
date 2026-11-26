@@ -236,11 +236,33 @@ wait for one another on the lock, so there is no parallel speed-up for GIAC
 work itself. A `GiacExpr` is a value and can be created on one thread and used
 on another.
 
-The exception is the package extensions' conversions (`to_symbolics`,
-`to_giac` from Symbolics, SymPy, MathJSON or Nemo values, `to_sympy`,
-`to_mathjson`, `to_nemo`): they build and walk GIAC objects through the
-wrapper without taking the lock, so do not run them while another task is in
-Giac.
+This holds for the package extensions too. Their conversions take the GIAC
+lock around every call into the wrapper (`Giac.GiacCxxBindings`), with the
+`GiacExpr` whose value they read kept alive under `GC.@preserve`, like the code
+in `src/`:
+
+| Extension | What runs under the lock |
+|-----------|--------------------------|
+| `GiacSymbolicsExt` | all of `to_giac(::Num)` and of `to_symbolics`: one lock around the whole tree walk |
+| `GiacMathJSONExt` | all of `to_mathjson(::GiacExpr)` and of `to_giac` from a MathJSON expression |
+| `GiacNemoExt` | the GIAC part only: building the GIAC tree in `to_giac`, reading the GIAC object in `to_nemo`. Nemo (FLINT) work runs outside the lock |
+| `GiacSymPyExt` | the GIAC pass only (see below). No Python call is made under the lock |
+| `GiacLibPARIExt`, `GiacTermInterfaceExt`, `GiacMCPExt` | nothing of their own: they call only Giac's API, which locks; PARI runs outside the lock |
+
+The SymPy bridge never holds the GIAC lock while it calls Python: a thread
+holding the GIAC lock while it waits for Python's GIL, while another thread
+holds the GIL and waits for the GIAC lock, would deadlock. Each direction runs
+in two passes over a small tree of plain Julia data. `to_sympy` reads the GIAC
+object into that tree under the lock, then builds the `Sym` after releasing
+it; `to_giac(::Sym)` reads the SymPy expression into the tree first, then takes
+the lock to build the GIAC object. PyCall itself must be used from the thread
+Python runs on, so run SymPy conversions on that thread (`@async` tasks, for
+instance); other threads can use Giac meanwhile.
+
+A test reads `ext/*.jl` and fails if a wrapper call can be reached from an
+extension's entry point without the lock (`test/test_extensions_threads.jl`).
+Helpers that make wrapper calls without taking the lock themselves expect
+their caller to hold it.
 
 What is **not** shared between threads is the default context. The C++
 wrapper keeps the context used by every call that does not name one in a

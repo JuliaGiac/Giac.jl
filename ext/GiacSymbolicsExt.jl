@@ -155,6 +155,7 @@ end
 
 Recursively convert a Symbolics.jl expression tree to a GIAC Gen object.
 This is the core function for direct to_giac conversion without string serialization.
+The caller holds the GIAC lock, as for every helper here that makes a wrapper call.
 """
 # Julia's irrational constants and their GIAC equivalents. Checked before
 # anything else: an `Irrational` is a literal number to SymbolicUtils, and
@@ -384,11 +385,14 @@ giac_expr = to_giac(x^2 + y)
 ```
 """
 function Giac.to_giac(expr::Num)::GiacExpr
-    # Use direct conversion via tree traversal to build Gen
-    gen = _convert_to_gen(expr)
-    # Convert Gen directly to GiacExpr without string serialization
-    ptr = Giac._gen_to_ptr(gen)
-    return GiacExpr(ptr)
+    # The whole tree is built under the GIAC lock: every node is a wrapper call.
+    # Walking the Symbolics side is plain Julia, so holding the lock costs little.
+    return Giac.with_giac_lock() do
+        # Use direct conversion via tree traversal to build Gen
+        gen = _convert_to_gen(expr)
+        # Convert Gen directly to GiacExpr without string serialization
+        GiacExpr(Giac._gen_to_ptr(gen))
+    end
 end
 
 """
@@ -424,11 +428,14 @@ sym_expr = to_symbolics(result)  # (x-1)*(x+1)
 """
 function Giac.to_symbolics(expr::GiacExpr)
     var_cache = Dict{String, Num}()
-    # Feature 052: Direct pointer conversion without string serialization
-    # Use _ptr_to_gen to get Gen directly from the GiacExpr pointer
-    gen = Giac._ptr_to_gen(expr)
-    result = _gen_tree_to_symbolics(gen, var_cache)
-    return result
+    # The walk reads GIAC objects at every node, so it runs under the GIAC lock,
+    # with `expr` (whose value it reads) kept alive until it is done.
+    return GC.@preserve expr Giac.with_giac_lock() do
+        # Feature 052: Direct pointer conversion without string serialization
+        # Use _ptr_to_gen to get Gen directly from the GiacExpr pointer
+        gen = Giac._ptr_to_gen(expr)
+        _gen_tree_to_symbolics(gen, var_cache)
+    end
 end
 
 # Export conversion functions

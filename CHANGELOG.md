@@ -265,6 +265,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the tier-1 helpers, rational and complex accessors, `substitute`'s vector
   path) go through the lock too. Using Giac from several tasks or threads at
   once is now memory-safe; calls are still serialized.
+- **The package extensions call GIAC only under the GIAC lock.** The
+  Symbolics, SymPy, MathJSON and Nemo bridges built and walked GIAC objects
+  through the wrapper without the lock, so a conversion could run inside GIAC
+  at the same time as another task, or as the freeing of queued objects; with
+  several threads this corrupted the heap. `to_giac(::Num)`, `to_symbolics`,
+  `to_mathjson` and `to_giac` from MathJSON now take the lock once around the
+  whole conversion, and `to_giac`/`to_nemo` for Nemo around the GIAC part,
+  with the expression read kept alive by `GC.@preserve`. The SymPy bridge does
+  not hold the GIAC lock while it calls Python, which could deadlock against
+  Python's GIL: `to_sympy` reads the GIAC object under the lock and builds the
+  `Sym` after releasing it, and `to_giac(::Sym)` reads the SymPy expression
+  before taking the lock. Results and errors are unchanged. The LibPARI,
+  TermInterface and MCP extensions call only Giac's API, which already locks.
+  A test checks `ext/*.jl` for wrapper calls reachable without the lock.
 - **An expression is kept alive while its handle is in use.** Code that
   passed `expr.ptr` on let the collector finalize `expr` before the handle
   was looked up, so a temporary could print as `<unknown>` (or a collected

@@ -304,3 +304,104 @@ end
     end
 
 end
+
+# ============================================================================
+# Concurrency
+#
+# The bridge reads and builds GIAC objects under the GIAC lock, and calls
+# Python without it: holding the GIAC lock while waiting for the GIL, while
+# another thread holds the GIL and waits for the GIAC lock, would deadlock.
+#
+# PyCall must only be used from the thread Python was started on, so the SymPy
+# conversions run in tasks on this thread (`@async`), and only the GIAC work
+# around them runs on other threads (`Threads.@spawn`, with `julia -t 4`).
+# ============================================================================
+
+@testset "SymPy Conversion (concurrency)" begin
+    ext = Base.get_extension(Giac, :GiacSymPyExt)
+    x, y = symbols("x y")
+
+    # Hold the GIAC lock in another task until `f` returns
+    function with_giac_lock_held_elsewhere(f)
+        held, release = Channel{Bool}(1), Channel{Bool}(1)
+        holder = Threads.@spawn begin
+            lock(Giac.GIAC_LOCK)
+            try
+                put!(held, true)
+                take!(release)
+            finally
+                unlock(Giac.GIAC_LOCK)
+            end
+        end
+        take!(held)
+        try
+            return f()
+        finally
+            put!(release, true)
+            wait(holder)
+        end
+    end
+
+    @testset "the Python side does not wait for the GIAC lock" begin
+        s = sin(x) + Sym(3) / 4 * x^2 + Sym(2)^70
+        tree = with_giac_lock_held_elsewhere(() -> ext._sympy_to_tree(s))
+        @test to_giac(s) == giac_eval("sin(x)+3/4*x^2+2^70")
+
+        g = giac_eval("ln(x) + 3*y^2 + 2^70 + 3/4")
+        gtree = Giac.with_giac_lock(() -> ext._gen_to_tree(Giac._ptr_to_gen(g)))
+        back = with_giac_lock_held_elsewhere(() -> ext._tree_to_sympy(gtree, Dict{String, Sym}()))
+        @test back == to_sympy(g)
+        @test tree isa ext._Symb
+    end
+
+    @testset "the GIAC side waits for the GIAC lock" begin
+        g = giac_eval("sin(x) + 1")
+        s = sin(x) + 1
+        to_s, to_g = with_giac_lock_held_elsewhere() do
+            a = @async to_sympy(g)
+            b = @async to_giac(s)
+            sleep(0.2)
+            @test !istaskdone(a)
+            @test !istaskdone(b)
+            a, b
+        end
+        @test fetch(to_s) == s
+        @test fetch(to_g) == g
+    end
+
+    @testset "conversions while other threads evaluate and collect" begin
+        stop = Threads.Atomic{Bool}(false)
+        noise = [Threads.@spawn begin
+                     n = 0
+                     while !stop[]
+                         e = Giac.Commands.expand((giac_eval("thz") + n + k)^3)
+                         string(Giac.Commands.factor(e))
+                         n += 1
+                         yield()
+                     end
+                     n
+                 end for k in 1:2]
+        try
+            converters = [@async begin
+                              ok = 0
+                              for j in 1:25
+                                  n = 100k + j
+                                  g = giac_eval("sin(x) + $n*y^2 + 2^70 + 3/4 + 2*i*x")
+                                  ok += to_giac(to_sympy(g)) == g
+                                  ok += to_giac(cos(x) + n * y^3 + Sym(2)^80) ==
+                                        giac_eval("cos(x)+$n*y^3+2^80")
+                                  j % 5 == 0 && GC.gc()     # on this thread
+                                  yield()
+                              end
+                              ok
+                          end for k in 1:4]
+            @test all(==(50), fetch.(converters))
+        finally
+            stop[] = true
+            foreach(wait, noise)
+        end
+        GC.gc()
+        Giac.with_giac_lock(() -> nothing)
+        @test Giac._DOOMED_COUNT[] == 0
+    end
+end

@@ -50,48 +50,77 @@ function _get_julia_function(giac_name::String)::Union{Function, Nothing}
 end
 
 # ============================================================================
-# Core Conversion
+# Locking
+#
+# GIAC is not thread-safe: every wrapper call runs under the GIAC lock. Python
+# is not either, and SymPy is reached through PyCall, on the thread that holds
+# the GIL. Holding the GIAC lock while waiting for the GIL, while another
+# thread holds the GIL and waits for the GIAC lock, would deadlock. So neither
+# conversion holds the GIAC lock while calling Python. Each runs in two passes
+# over a small intermediate tree that is plain Julia data:
+#
+#   to_sympy:  GIAC -> tree   under the GIAC lock, no Python
+#              tree -> Sym    Python only, lock released
+#   to_giac:   Sym  -> tree   Python only, no GIAC
+#              tree -> GIAC   under the GIAC lock, no Python
+#
+# Errors are carried in the tree and raised in the second pass, at the place
+# the one-pass conversion raised them, so a failing conversion reports the same
+# error as before.
 # ============================================================================
 
-"""
-    _gen_to_sympy(gen, var_cache::Dict{String, Sym}) -> Sym
+# ============================================================================
+# Core Conversion: GIAC -> SymPy
+# ============================================================================
 
-Recursively convert a CxxWrap Gen object tree to a SymPy.jl `Sym` expression.
-Mirrors `GiacSymbolicsExt._gen_tree_to_symbolics` but produces SymPy objects.
+# Intermediate tree for to_sympy. A leaf is a number (an `Int64`, a `Float64` or a
+# `BigInt`), which `Sym` converts.
+struct _Idnt
+    name::String
+end
+struct _Call
+    op::String
+    args::Vector{Any}
+end
+struct _Cplx
+    re::Any
+    im::Any
+end
+struct _Frac
+    num::Any
+    den::Any
+end
+struct _Fail
+    msg::String
+end
+
 """
-function _gen_to_sympy(gen, var_cache::Dict{String, Sym})
+    _gen_to_tree(gen) -> tree
+
+First pass of `to_sympy`: read a CxxWrap Gen object tree into plain Julia data.
+The caller holds the GIAC lock. Makes no Python call.
+"""
+function _gen_to_tree(gen)
     t = Giac.GenTypes.T(Giac.GiacCxxBindings.type(gen))
 
     if t == Giac.GenTypes.INT
-        return Sym(Giac.GiacCxxBindings.to_int64(gen))
+        return Giac.GiacCxxBindings.to_int64(gen)
 
     elseif t == Giac.GenTypes.DOUBLE
-        return Sym(Giac.GiacCxxBindings.to_double(gen))
+        return Giac.GiacCxxBindings.to_double(gen)
 
     elseif t == Giac.GenTypes.ZINT
         # Arbitrary precision integer: round-trip through GiacExpr/to_julia,
         # which parses the GMP-backed decimal string into a BigInt.
         sub = GiacExpr(Giac._gen_to_ptr(gen))
-        return Sym(Giac.to_julia(sub)::BigInt)
+        return Giac.to_julia(sub)::BigInt
 
     elseif t == Giac.GenTypes.CPLX
-        re = _gen_to_sympy(Giac.GiacCxxBindings.cplx_re(gen), var_cache)
-        im = _gen_to_sympy(Giac.GiacCxxBindings.cplx_im(gen), var_cache)
-        return re + im * SymPy.IM
+        return _Cplx(_gen_to_tree(Giac.GiacCxxBindings.cplx_re(gen)),
+                     _gen_to_tree(Giac.GiacCxxBindings.cplx_im(gen)))
 
     elseif t == Giac.GenTypes.IDNT
-        name = String(Giac.GiacCxxBindings.idnt_name(gen))
-        if name == "pi" || name == "π"
-            return SymPy.PI
-        elseif name == "i"
-            return SymPy.IM
-        elseif name == "e"
-            return SymPy.E
-        end
-        if !haskey(var_cache, name)
-            var_cache[name] = SymPy.symbols(name)
-        end
-        return var_cache[name]
+        return _Idnt(String(Giac.GiacCxxBindings.idnt_name(gen)))
 
     elseif t == Giac.GenTypes.SYMB
         op = String(Giac.GiacCxxBindings.symb_sommet_name(gen))
@@ -104,42 +133,83 @@ function _gen_to_sympy(gen, var_cache::Dict{String, Sym})
         else
             [feuille]
         end
-
-        converted = Sym[_gen_to_sympy(a, var_cache) for a in args]
-
-        if op == "+"
-            return reduce(+, converted)
-        elseif op == "*"
-            return reduce(*, converted)
-        elseif op == "-"
-            return length(converted) == 1 ? -converted[1] : converted[1] - converted[2]
-        elseif op == "/"
-            return converted[1] / converted[2]
-        elseif op == "^"
-            return converted[1] ^ converted[2]
-        elseif op == "inv"
-            # GIAC reciprocal operator (e.g. 1/ln(10) inside log10(x)).
-            # Build Sym(1)/arg explicitly so constants stay symbolic instead
-            # of relying on Base.inv being overloaded on Sym.
-            return Sym(1) / converted[1]
-        else
-            func = _get_julia_function(op)
-            if func === nothing
-                error("Unsupported GIAC operator '$op' in to_sympy conversion")
-            end
-            return func(converted...)
-        end
+        return _Call(op, Any[_gen_to_tree(a) for a in args])
 
     elseif t == Giac.GenTypes.FRAC
-        num = _gen_to_sympy(Giac.GiacCxxBindings.frac_num(gen), var_cache)
-        den = _gen_to_sympy(Giac.GiacCxxBindings.frac_den(gen), var_cache)
-        return num / den
+        return _Frac(_gen_to_tree(Giac.GiacCxxBindings.frac_num(gen)),
+                     _gen_to_tree(Giac.GiacCxxBindings.frac_den(gen)))
 
     elseif t == Giac.GenTypes.STRNG
-        error("Cannot convert GIAC string to SymPy.Sym")
+        return _Fail("Cannot convert GIAC string to SymPy.Sym")
 
     else
-        error("Unsupported GIAC type '$(t)' (code $(Int(t))) in to_sympy conversion")
+        return _Fail("Unsupported GIAC type '$(t)' (code $(Int(t))) in to_sympy conversion")
+    end
+end
+
+"""
+    _tree_to_sympy(node, var_cache::Dict{String, Sym}) -> Sym
+
+Second pass of `to_sympy`: build the SymPy.jl `Sym` expression. Makes no GIAC
+call, so it runs without the GIAC lock. Mirrors
+`GiacSymbolicsExt._gen_tree_to_symbolics` but produces SymPy objects.
+"""
+_tree_to_sympy(x::Number, var_cache::Dict{String, Sym}) = Sym(x)
+
+_tree_to_sympy(f::_Fail, var_cache::Dict{String, Sym}) = error(f.msg)
+
+function _tree_to_sympy(c::_Cplx, var_cache::Dict{String, Sym})
+    re = _tree_to_sympy(c.re, var_cache)
+    im = _tree_to_sympy(c.im, var_cache)
+    return re + im * SymPy.IM
+end
+
+function _tree_to_sympy(f::_Frac, var_cache::Dict{String, Sym})
+    num = _tree_to_sympy(f.num, var_cache)
+    den = _tree_to_sympy(f.den, var_cache)
+    return num / den
+end
+
+function _tree_to_sympy(id::_Idnt, var_cache::Dict{String, Sym})
+    name = id.name
+    if name == "pi" || name == "π"
+        return SymPy.PI
+    elseif name == "i"
+        return SymPy.IM
+    elseif name == "e"
+        return SymPy.E
+    end
+    if !haskey(var_cache, name)
+        var_cache[name] = SymPy.symbols(name)
+    end
+    return var_cache[name]
+end
+
+function _tree_to_sympy(c::_Call, var_cache::Dict{String, Sym})
+    op = c.op
+    converted = Sym[_tree_to_sympy(a, var_cache) for a in c.args]
+
+    if op == "+"
+        return reduce(+, converted)
+    elseif op == "*"
+        return reduce(*, converted)
+    elseif op == "-"
+        return length(converted) == 1 ? -converted[1] : converted[1] - converted[2]
+    elseif op == "/"
+        return converted[1] / converted[2]
+    elseif op == "^"
+        return converted[1] ^ converted[2]
+    elseif op == "inv"
+        # GIAC reciprocal operator (e.g. 1/ln(10) inside log10(x)).
+        # Build Sym(1)/arg explicitly so constants stay symbolic instead
+        # of relying on Base.inv being overloaded on Sym.
+        return Sym(1) / converted[1]
+    else
+        func = _get_julia_function(op)
+        if func === nothing
+            error("Unsupported GIAC operator '$op' in to_sympy conversion")
+        end
+        return func(converted...)
     end
 end
 
@@ -164,9 +234,11 @@ sym_expr = to_sympy(result)  # sin(symbols("x")) + log(symbols("y"))
 ```
 """
 function Giac.to_sympy(expr::GiacExpr)
-    var_cache = Dict{String, Sym}()
-    gen = Giac._ptr_to_gen(expr)
-    return _gen_to_sympy(gen, var_cache)
+    # GIAC side under the GIAC lock, Python side after it is released
+    tree = GC.@preserve expr Giac.with_giac_lock() do
+        _gen_to_tree(Giac._ptr_to_gen(expr))
+    end
+    return _tree_to_sympy(tree, Dict{String, Sym}())
 end
 
 # ============================================================================
@@ -188,7 +260,7 @@ const SYMPY_TO_GIAC_NAME = Dict{String, String}(
     _bigint_to_gen(n::BigInt) -> Gen
 
 Convert a Julia `BigInt` to a GIAC `Gen` using direct GMP binary transfer.
-Mirrors `GiacSymbolicsExt._bigint_to_gen`.
+Mirrors `GiacSymbolicsExt._bigint_to_gen`. The caller holds the GIAC lock.
 """
 function _bigint_to_gen(n::BigInt)
     if n == 0
@@ -219,68 +291,67 @@ Return the SymPy (Python) class name of `ex`, e.g. `"Add"`, `"Mul"`, `"Pow"`,
 """
 @inline _pyclass(ex::Sym) = ex.o[:__class__][:__name__]
 
-"""
-    _sympy_to_gen(ex) -> Gen
+# Intermediate tree for to_giac(::Sym). A leaf is an `Int32` (a GIAC `_INT_`),
+# a `BigInt` or a `Float64`; `_Idnt`, `_Cplx` and `_Frac` are shared with the
+# other direction. `_Symb` is a GIAC symbolic built without evaluation.
+struct _Symb
+    op::String
+    args::Vector{Any}
+end
 
-Recursively convert a SymPy `Sym` expression tree to a GIAC `Gen` using direct
-C++ construction (no string serialization). Mirrors
-`GiacSymbolicsExt._convert_to_gen`.
 """
-function _sympy_to_gen(ex)
+    _sympy_to_tree(ex) -> tree
+
+First pass of `to_giac(::Sym)`: read a SymPy `Sym` expression tree into plain
+Julia data. Makes Python calls only, so it runs without the GIAC lock.
+"""
+function _sympy_to_tree(ex)
     cls = _pyclass(ex)
 
     if cls == "Integer"
-        return _bigint_to_gen(convert(BigInt, ex))
+        return convert(BigInt, ex)
 
     elseif cls == "Zero"
-        return Giac.GiacCxxBindings.Gen(Int32(0))
+        return Int32(0)
     elseif cls == "One"
-        return Giac.GiacCxxBindings.Gen(Int32(1))
+        return Int32(1)
     elseif cls == "NegativeOne"
-        return Giac.GiacCxxBindings.Gen(Int32(-1))
+        return Int32(-1)
     elseif cls == "Half"
-        return Giac.GiacCxxBindings.make_fraction(
-            Giac.GiacCxxBindings.Gen(Int32(1)),
-            Giac.GiacCxxBindings.Gen(Int32(2)))
+        return _Frac(Int32(1), Int32(2))
 
     elseif cls == "Float"
-        return Giac.GiacCxxBindings.Gen(Float64(convert(Float64, ex)))
+        return Float64(convert(Float64, ex))
 
     elseif cls == "Rational"
-        num = _bigint_to_gen(convert(BigInt, ex.p))
-        den = _bigint_to_gen(convert(BigInt, ex.q))
-        return Giac.GiacCxxBindings.make_fraction(num, den)
+        return _Frac(convert(BigInt, ex.p), convert(BigInt, ex.q))
 
     elseif cls == "Symbol"
-        return Giac.GiacCxxBindings.make_identifier(string(ex.name))
+        return _Idnt(string(ex.name))
 
     elseif cls == "Pi"
-        return Giac.GiacCxxBindings.make_identifier("pi")
+        return _Idnt("pi")
 
     elseif cls == "Exp1"
-        return Giac.GiacCxxBindings.make_identifier("e")
+        return _Idnt("e")
 
     elseif cls == "ImaginaryUnit"
         # Build the actual GIAC complex 0+1*i rather than a bare identifier,
         # so arithmetic like 4*I combines into 4*i instead of a malformed
         # identifier product.
-        return Giac.GiacCxxBindings.make_complex(
-            Giac.GiacCxxBindings.Gen(Int32(0)),
-            Giac.GiacCxxBindings.Gen(Int32(1)))
+        return _Cplx(Int32(0), Int32(1))
 
     elseif cls == "Add" || cls == "Mul"
         op = (cls == "Add") ? "+" : "*"
         args = ex.args
         if length(args) == 1
-            return _sympy_to_gen(args[1])
+            return _sympy_to_tree(args[1])
         end
-        gen_args = Giac.GiacCxxBindings.Gen[_sympy_to_gen(a) for a in args]
-        return Giac.GiacCxxBindings.make_symbolic_unevaluated(
-            op, StdVector{Giac.GiacCxxBindings.Gen}(gen_args))
+        return _Symb(op, Any[_sympy_to_tree(a) for a in args])
 
     elseif cls == "Pow"
         args = ex.args
-        base = _sympy_to_gen(args[1])
+        base = _sympy_to_tree(args[1])
         exp = args[2]
         # SymPy represents sqrt(x) as Pow(x, 1/2); rebuild as GIAC sqrt(x).
         # The exponent may be the singleton "Half" class or a generic
@@ -289,22 +360,37 @@ function _sympy_to_gen(ex)
         if (ecls == "Half") ||
            (ecls == "Rational" &&
             convert(BigInt, exp.p) == 1 && convert(BigInt, exp.q) == 2)
-            return Giac.GiacCxxBindings.make_symbolic_unevaluated(
-                "sqrt", StdVector{Giac.GiacCxxBindings.Gen}([base]))
+            return _Symb("sqrt", Any[base])
         end
-        exp_gen = _sympy_to_gen(exp)
-        return Giac.GiacCxxBindings.make_symbolic_unevaluated(
-            "^", StdVector{Giac.GiacCxxBindings.Gen}([base, exp_gen]))
+        return _Symb("^", Any[base, _sympy_to_tree(exp)])
 
     else
         # Generic function call: sin, cos, tan, exp, log, ... — map the name
         # (e.g. log -> ln) and rebuild as a GIAC symbolic.
         giac_name = get(SYMPY_TO_GIAC_NAME, cls, cls)
-        args = ex.args
-        gen_args = Giac.GiacCxxBindings.Gen[_sympy_to_gen(a) for a in args]
-        return Giac.GiacCxxBindings.make_symbolic_unevaluated(
-            giac_name, StdVector{Giac.GiacCxxBindings.Gen}(gen_args))
+        return _Symb(giac_name, Any[_sympy_to_tree(a) for a in ex.args])
     end
+end
+
+"""
+    _tree_to_gen(node) -> Gen
+
+Second pass of `to_giac(::Sym)`: build the GIAC `Gen` by direct C++
+construction (no string serialization). The caller holds the GIAC lock. Makes
+no Python call. Mirrors `GiacSymbolicsExt._convert_to_gen`.
+"""
+_tree_to_gen(n::Int32) = Giac.GiacCxxBindings.Gen(n)
+_tree_to_gen(n::BigInt) = _bigint_to_gen(n)
+_tree_to_gen(x::Float64) = Giac.GiacCxxBindings.Gen(x)
+_tree_to_gen(id::_Idnt) = Giac.GiacCxxBindings.make_identifier(id.name)
+_tree_to_gen(f::_Frac) =
+    Giac.GiacCxxBindings.make_fraction(_tree_to_gen(f.num), _tree_to_gen(f.den))
+_tree_to_gen(c::_Cplx) =
+    Giac.GiacCxxBindings.make_complex(_tree_to_gen(c.re), _tree_to_gen(c.im))
+function _tree_to_gen(s::_Symb)
+    gen_args = Giac.GiacCxxBindings.Gen[_tree_to_gen(a) for a in s.args]
+    return Giac.GiacCxxBindings.make_symbolic_unevaluated(
+        s.op, StdVector{Giac.GiacCxxBindings.Gen}(gen_args))
 end
 
 """
@@ -325,8 +411,11 @@ giac_expr = to_giac(sin(x) + log(x))  # GiacExpr: sin(x)+ln(x)
 ```
 """
 function Giac.to_giac(expr::Sym)::GiacExpr
-    gen = _sympy_to_gen(expr)
-    return GiacExpr(Giac._gen_to_ptr(gen))
+    # Python side first, without the GIAC lock; then the GIAC side under it
+    tree = _sympy_to_tree(expr)
+    return Giac.with_giac_lock() do
+        GiacExpr(Giac._gen_to_ptr(_tree_to_gen(tree)))
+    end
 end
 
 """
