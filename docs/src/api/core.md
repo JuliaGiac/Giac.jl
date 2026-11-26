@@ -334,6 +334,28 @@ invoke_cmd(:transpose, M) # Returns transposed matrix
 invoke_cmd(:eigenvals, M) # Returns eigenvalues
 ```
 
+Generated commands also accept a Julia `Matrix{GiacExpr}`, which they pass to
+GIAC as a `GiacMatrix`.
+
+## Arrays of expressions
+
+`GiacMatrix` is an `AbstractMatrix{GiacExpr}`. These methods work on it and on
+any Julia array of `GiacExpr` (see [Linear Algebra](../mathematics/linear_algebra.md)).
+
+```@docs
+Base.Matrix(::GiacMatrix)
+Giac.SymbolicScaling
+Giac.LinearAlgebra.mul!(::AbstractVecOrMat{GiacExpr}, ::AbstractVecOrMat, ::AbstractVecOrMat, ::GiacExpr, ::GiacExpr)
+Giac.LinearAlgebra.eigvals(::AbstractMatrix{GiacExpr})
+Giac.LinearAlgebra.eigen(::AbstractMatrix{GiacExpr})
+Giac.LinearAlgebra.nullspace(::AbstractMatrix{GiacExpr})
+Base.exp(::AbstractMatrix{GiacExpr})
+Base.kron(::GiacMatrix, ::GiacMatrix)
+∇
+jacobian
+hessian
+```
+
 ## Command Discovery
 
 ```@docs
