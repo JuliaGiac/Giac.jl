@@ -244,7 +244,7 @@ end
 
 # Helper to wrap Tier 1 unary functions
 function _tier1_or_fallback(tier1_func::Function, cmd::Symbol, expr::GiacExpr)::GiacExpr
-    result_ptr = tier1_func(expr.ptr)
+    result_ptr = GC.@preserve expr tier1_func(expr.ptr)
     if result_ptr != C_NULL
         return GiacExpr(result_ptr)
     end
@@ -254,7 +254,7 @@ end
 
 # Helper to wrap Tier 1 binary functions
 function _tier1_or_fallback_binary(tier1_func::Function, cmd::Symbol, a::GiacExpr, b::GiacExpr)::GiacExpr
-    result_ptr = tier1_func(a.ptr, b.ptr)
+    result_ptr = GC.@preserve a b tier1_func(a.ptr, b.ptr)
     if result_ptr != C_NULL
         return GiacExpr(result_ptr)
     end
@@ -264,7 +264,7 @@ end
 
 # Helper to wrap Tier 1 ternary functions
 function _tier1_or_fallback_ternary(tier1_func::Function, cmd::Symbol, a::GiacExpr, b::GiacExpr, c::GiacExpr)::GiacExpr
-    result_ptr = tier1_func(a.ptr, b.ptr, c.ptr)
+    result_ptr = GC.@preserve a b c tier1_func(a.ptr, b.ptr, c.ptr)
     if result_ptr != C_NULL
         return GiacExpr(result_ptr)
     end

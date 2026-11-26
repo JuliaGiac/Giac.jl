@@ -291,13 +291,13 @@ end
 
 function _convert_to_int64(g::GiacExpr)::Int64
     with_giac_lock() do
-        return _giac_to_int64(g.ptr)
+        return GC.@preserve g _giac_to_int64(g.ptr)
     end
 end
 
 function _convert_to_float64(g::GiacExpr)::Float64
     with_giac_lock() do
-        return _giac_to_float64(g.ptr)
+        return GC.@preserve g _giac_to_float64(g.ptr)
     end
 end
 

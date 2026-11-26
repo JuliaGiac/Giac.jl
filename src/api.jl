@@ -36,7 +36,7 @@ function giac_eval(expr::AbstractString, ctx::GiacContext=DEFAULT_CONTEXT[])::Gi
     end
 
     with_giac_lock() do
-        ptr = _giac_eval_string(expr, ctx.ptr)
+        ptr = GC.@preserve ctx _giac_eval_string(expr, ctx.ptr)
         if ptr == C_NULL
             throw(GiacError("Failed to evaluate expression: $expr", :eval))
         end
@@ -466,7 +466,7 @@ function LinearAlgebra.det(m::GiacMatrix)::GiacExpr
     end
 
     with_giac_lock() do
-        ptr = _giac_matrix_det(m.ptr)
+        ptr = GC.@preserve m _giac_matrix_det(m.ptr)
         if ptr == C_NULL
             throw(GiacError("Determinant computation failed", :eval))
         end
@@ -485,7 +485,7 @@ function Base.inv(m::GiacMatrix)::GiacMatrix
     end
 
     with_giac_lock() do
-        ptr = _giac_matrix_inv(m.ptr)
+        ptr = GC.@preserve m _giac_matrix_inv(m.ptr)
         if ptr == C_NULL
             throw(GiacError("Matrix inversion failed (may be singular)", :eval))
         end
@@ -504,7 +504,7 @@ function LinearAlgebra.tr(m::GiacMatrix)::GiacExpr
     end
 
     with_giac_lock() do
-        ptr = _giac_matrix_trace(m.ptr)
+        ptr = GC.@preserve m _giac_matrix_trace(m.ptr)
         if ptr == C_NULL
             throw(GiacError("Trace computation failed", :eval))
         end
@@ -519,7 +519,7 @@ Compute the transpose of a matrix.
 """
 function Base.transpose(m::GiacMatrix)::GiacMatrix
     with_giac_lock() do
-        ptr = _giac_matrix_transpose(m.ptr)
+        ptr = GC.@preserve m _giac_matrix_transpose(m.ptr)
         if ptr == C_NULL
             throw(GiacError("Transpose failed", :eval))
         end

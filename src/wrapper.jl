@@ -845,7 +845,7 @@ _giac_pow_tier1(base_ptr::Ptr{Cvoid}, exp_ptr::Ptr{Cvoid}) = _tier1_binary(GiacC
 
 # Resolve a GiacExpr to its CxxWrap Gen, falling back to giac_eval if no cached Gen.
 function _get_gen_or_eval(expr::GiacExpr)
-    return with_giac_lock() do
+    return GC.@preserve expr with_giac_lock() do
         g = _get_gen(expr.ptr)
         return g === nothing ? GiacCxxBindings.giac_eval(_get_expr_string(expr.ptr)) : g
     end
