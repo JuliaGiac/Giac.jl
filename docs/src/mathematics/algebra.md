@@ -113,6 +113,34 @@ solve(x^2 - 2, x)
 # Output includes sqrt(2) and -sqrt(2)
 ```
 
+## Equations as values
+
+`a ~ b` is an equation, and it can be worked on like any other value. Its sides
+are `lhs` and `rhs`; arithmetic with an equation applies to both sides;
+`isolate` solves for one variable and gives the result as an equation; and an
+equation can be the rule of a substitution.
+
+```julia
+@giac_var x y
+eq = 2x + 3 ~ y
+lhs(eq), rhs(eq)            # 2*x+3, y
+
+eq - 3                      # 2*x = y-3
+(eq - 3) / 2                # x = (y-3)/2, once simplified
+eq + (x ~ 1)                # 3*x+3 = y+1
+
+isolate(eq, x)              # x = (y-3)/2
+isolate(x^2 ~ y, x)         # two equations, one per solution: x = ±√y
+
+substitute(x + y, y ~ 2x)   # 3*x
+substitute(y^2, isolate(eq, y))
+```
+
+`~` builds the equation without printing and parsing its sides, so a float
+keeps all its digits: `x ~ 0.123456789012345`. Equations between arrays of
+expressions, and solving for a matrix unknown, are described in
+[Linear Algebra](linear_algebra.md#Matrix-equations).
+
 ## GCD and LCM
 
 ### Greatest Common Divisor
