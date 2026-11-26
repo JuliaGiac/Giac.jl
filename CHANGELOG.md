@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **`@exact` keeps the numbers of symbolic code exact**, ported from Kahli
+  Burke's ergonomics branch. A float literal is read from its shortest
+  decimal form and becomes the exact Giac fraction: `@exact 0.1 + 0.2` is
+  `3/10` (Julia gives `0.30000000000000004`), `2.5e-3` is `1/400`, and
+  `@exact solve(x^2 - 0.5, x)` gives `-1/2*sqrt(2)` and `1/2*sqrt(2)`, not
+  floats. `big(0.1)` and `big"0.1"` are `1/10` too. `π`, `pi` and `ℯ` become
+  Giac's constants (`@exact 2π * x` is `2*pi*x`), `sqrt(2)` and `cbrt(2)` of
+  an integer literal become roots, `2^(1/3)` and `2^-1` powers of the Giac
+  integer, and `1/2` of two integer literals the Giac fraction. Integer
+  literals and integer arithmetic, names (a float held in a variable), `Base.pi`,
+  quoted code and the code of other macros are left as written. Names
+  assigned in the macro's own block are bound to Giac integers and
+  fractions. See "Exact Numbers" in the Core API page.
+
 ### Changed
 
 - **`GiacLibPARIExt` accepts LibPARI 0.19** (PARI 2.19.1, `PARI_jll`

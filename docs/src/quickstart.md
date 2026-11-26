@@ -57,6 +57,10 @@ x + (1 + 2im)                          # x+1+2*i (Complex)
 x + π                                  # x+pi (Irrational)
 x * ℯ                                  # e*x (Euler's number)
 
+# Decimals stay exact under @exact (0.1 alone is a binary float)
+@exact 0.1 + 0.2                       # 3/10
+@exact 0.5x^2 + 2π * x                 # 1/2*x^2+2*pi*x
+
 # Or use invoke_cmd for any command
 invoke_cmd(:factor, giac_eval("x^2 - 1"))  # (x-1)*(x+1)
 
@@ -66,3 +70,5 @@ to_julia(giac_eval("3/4"))   # 3//4::Rational{Int64}
 # or using |> operator
 giac_eval("3/4") |> to_julia
 ```
+
+To write decimals and keep them exact, see [Exact Numbers](@ref) and [`@exact`](@ref).
