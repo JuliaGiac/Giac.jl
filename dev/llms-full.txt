@@ -3910,6 +3910,24 @@ GiacInput
 giac_eval
 ```
 
+## Numbers and approximate equality
+
+`GiacExpr(x)` builds an expression from any Julia number, like
+`convert(GiacExpr, x)`: `GiacExpr(3//4)` is the exact `3/4`, and
+`GiacExpr.(M)` converts a numeric matrix entry by entry.
+
+```@docs
+Base.isapprox(::GiacExpr, ::GiacExpr)
+```
+
+```julia
+@giac_var x y
+sqrt(GiacExpr(2)) ≈ 1.4142135623730951   # true: compared by numeric value
+1.0000000001x + y ≈ x + y                # true: coefficients compared
+sin(x)^2 + cos(x)^2 ≈ 1                  # true: the expressions are equal
+isapprox(GiacExpr(π), 355//113; rtol = 1e-6)  # true
+```
+
 ## Symbolic Variables
 
 ```@docs
