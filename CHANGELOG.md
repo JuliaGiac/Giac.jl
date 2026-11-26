@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **`GiacLibPARIExt` accepts LibPARI 0.19** (PARI 2.19.1, `PARI_jll`
+  200.1900.100): the `LibPARI` compat becomes `"0.17, 0.18, 0.19"`. The
+  extension uses only `pari`, `gp_eval`, `Gen` and `PariType`, which 0.19
+  keeps. GIAC_jll 2.1.0, built on PARI 2.19, needs LibPARI 0.19 to share an
+  environment with LibPARI.
+
 - **Giac matrices iterate over their entries, like Julia matrices** (#33).
   For a matrix with Giac's matrix subtype (`matrix[...]`, `idn(n)`):
   `length`, linear indexing, `first`, `sum`, `in`, `map`, `keys` and
