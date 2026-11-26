@@ -603,14 +603,8 @@ end
 maketerm(::Type{GiacExpr}, op, args, metadata=nothing)::GiacExpr = GiacExpr(op(args...))
 
 
-# Internal helper to convert Gen to GiacExpr
+# Internal helper to convert Gen to GiacExpr: the value itself, not printed and parsed again
 function _gen_to_giacexpr(gen)
-    # Convert CxxWrap Gen to GiacExpr via string representation
-    if gen !== nothing
-        # GiacCxxBindings.to_string returns a CxxWrap StdString, convert to Julia String
-        std_str = GiacCxxBindings.to_string(gen)
-        julia_str = String(std_str)
-        return giac_eval(julia_str)
-    end
-    throw(GiacError("Cannot convert Gen to GiacExpr", :type))
+    gen === nothing && throw(GiacError("Cannot convert Gen to GiacExpr", :type))
+    return GiacExpr(_gen_to_ptr(gen))
 end
