@@ -611,3 +611,104 @@ Base.denominator(g::GiacExpr)::GiacExpr = invoke_cmd(:denom, g)
 # These would be implemented when we add expression tree traversal
 # Base.iterate(expr::GiacExpr) = ...
 # Base.length(expr::GiacExpr) = ...
+
+# ============================================================================
+# Approximate equality (design and tests from the `ergonomics` branch by
+# Kahli Burke, implemented on Giac.jl's current API)
+# ============================================================================
+
+"""
+    isapprox(a::GiacExpr, b::GiacExpr; atol = 0, rtol, nans = false)
+    a ≈ b
+
+Approximate equality, with Julia's tolerances.
+
+- Expressions without free symbols are compared by their numeric values:
+  `sqrt(GiacExpr(2)) ≈ 1.4142135623730951`.
+- Expressions in symbols are approximately equal when they are equal (`==`), or
+  when the numeric coefficients of their monomials are approximately equal, the
+  coefficients being compared as one vector: `1.0000000001x + y ≈ x + y`.
+  Non-rational parts such as `sin(x)` count as variables of the monomials.
+- An expression with no numeric value, or a coefficient without one, is
+  approximately equal only to what it equals.
+
+A `GiacExpr` can also be compared with a Julia number, in either order.
+"""
+function Base.isapprox(a::GiacExpr, b::GiacExpr;
+                       atol::Real = 0,
+                       rtol::Real = atol > 0 ? 0 : sqrt(eps(Float64)),
+                       nans::Bool = false)
+    isequal(a, b) && return true
+    if !_has_free_symbols(a) && !_has_free_symbols(b)
+        x, y = _approx_value(a), _approx_value(b)
+        (x === nothing || y === nothing) && return a == b
+        return isapprox(x, y; atol, rtol, nans)
+    end
+    a == b && return true
+    ca, cb = _monomial_coefficients(a, b)
+    ca === nothing && return false
+    monomials = collect(union(keys(ca), keys(cb)))
+    x = [get(ca, m, 0.0) for m in monomials]
+    y = [get(cb, m, 0.0) for m in monomials]
+    return isapprox(x, y; atol, rtol, nans)
+end
+Base.isapprox(a::GiacExpr, b::Number; kw...) = isapprox(a, convert(GiacExpr, b); kw...)
+Base.isapprox(a::Number, b::GiacExpr; kw...) = isapprox(convert(GiacExpr, a), b; kw...)
+
+_giac_list(e::GiacExpr) = GiacExpr[t for t in e]
+
+_has_free_symbols(e::GiacExpr) = !isempty(_giac_list(invoke_cmd(:lname, e)))
+
+# The value of an expression with no free symbols as a Float64 or ComplexF64,
+# or `nothing` if it has none.
+function _approx_value(e::GiacExpr)
+    v = try
+        to_julia(invoke_cmd(:evalf, e))
+    catch
+        return nothing
+    end
+    v isa Real && return Float64(v)
+    v isa Complex && return ComplexF64(v)
+    return nothing
+end
+
+# The coefficients of `a` and `b` as polynomials in the same variables: each
+# non-rational part of either (`lvar`, e.g. `x` or `sin(x)`) is replaced by a
+# fresh variable. Returns two `Dict(exponents => coefficient)`, or
+# `(nothing, nothing)` if a coefficient has no numeric value or the
+# expressions are not polynomial in those parts.
+function _monomial_coefficients(a::GiacExpr, b::GiacExpr)
+    atoms = unique!(vcat(_giac_list(invoke_cmd(:lvar, a)), _giac_list(invoke_cmd(:lvar, b))))
+    # Names must not start with `_`: Giac reads `_name` as a physical unit.
+    fresh = [giac_eval("giacjl_isapprox_t$i") for i in eachindex(atoms)]
+    polys = map((a, b)) do e
+        isempty(atoms) && return e
+        invoke_cmd(:expand, invoke_cmd(:subst, e, atoms, fresh))
+    end
+    ca = _coefficient_dict(polys[1], fresh)
+    cb = _coefficient_dict(polys[2], fresh)
+    (ca === nothing || cb === nothing) && return (nothing, nothing)
+    return ca, cb
+end
+
+function _coefficient_dict(p::GiacExpr, vars::Vector{GiacExpr},
+                           prefix::Vector{Int} = Int[],
+                           out::Dict{Vector{Int},Number} = Dict{Vector{Int},Number}())
+    if isempty(vars)
+        v = _approx_value(p)
+        v === nothing && return nothing
+        iszero(v) || (out[copy(prefix)] = v)
+        return out
+    end
+    coeffs = try
+        _giac_list(invoke_cmd(:coeffs, p, vars[1]))
+    catch
+        return nothing
+    end
+    degree = length(coeffs) - 1
+    for (i, c) in enumerate(coeffs)
+        r = _coefficient_dict(c, vars[2:end], [prefix; degree - i + 1], out)
+        r === nothing && return nothing
+    end
+    return out
+end
