@@ -123,7 +123,8 @@ using Giac.GenTypes
         giac_eval("epsilon:=1e-8")
         try
             Giac.Commands.evalf(r, 30)
-            @test eps() == "1e-08"
+            # compared as a number: Windows prints the exponent with three digits (1e-008)
+            @test parse(Float64, eps()) == 1e-8
         finally
             giac_eval("epsilon:=$before")
         end
