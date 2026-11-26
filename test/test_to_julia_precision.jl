@@ -130,6 +130,13 @@ using Giac.GenTypes
         @test eps() == before
     end
 
+    @testset "evalf to some digits leaves epsilon as it was" begin
+        r = giac_eval("rootof([[-3,0,-15,0,-12],[1,0,6,0,9,0,31]])")
+        eps = string(giac_eval("epsilon"))
+        Giac.Commands.evalf(r, 30)                       # GIAC itself leaves epsilon at 1e-30
+        @test string(giac_eval("epsilon")) == eps
+    end
+
     @testset "the issue #19 fixed point still holds" begin
         # `evalf` cannot reduce these; they must come back unchanged rather
         # than recursing forever.

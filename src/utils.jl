@@ -20,5 +20,15 @@ function with_giac_lock(f)
     end
 end
 
+# f(), with GIAC's epsilon (the tolerance of its numeric algorithms) as it was before
+function _keeping_epsilon(f)
+    old = string(giac_eval("epsilon"))
+    try
+        return f()
+    finally
+        string(giac_eval("epsilon")) == old || giac_eval("epsilon:=$old")
+    end
+end
+
 # Note: to_julia, is_numeric, and is_symbolic have been moved to
 # conversion.jl and introspection.jl as part of feature 029-output-handling
