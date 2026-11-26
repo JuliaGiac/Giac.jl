@@ -475,6 +475,56 @@ Giac.to_giac
 Giac.to_symbolics
 ```
 
+### How numbers are read
+
+`to_julia`, `float`, `Float64(g)`, `convert(Float64, g)`, `Complex(g)` and
+`Rational(g)` read a GIAC number as follows.
+
+**Doubles (`DOUBLE`) are read from the decimal GIAC prints for them**, at
+`Digits` significant digits (12 by default). This applies to the parts of a
+complex double and to the elements of a vector or matrix too:
+
+```julia
+to_julia(giac_eval("0.1+0.2"))               # 0.3
+to_julia(giac_eval("sqrt(2.0)"))             # 1.41421356237
+to_julia(giac_eval("sqrt(2.0) + sqrt(3.0)*i"))  # 1.41421356237 + 1.73205080757im
+```
+
+GIAC's doubles carry fewer mantissa bits than Julia's `Float64`: GIAC keeps
+its type tag in the low byte of the 64-bit word, which leaves 45 bits of
+mantissa instead of 53. The bits GIAC stores are therefore not a better
+reading than the printed decimal (for `0.1+0.2` they would read as
+`0.29999999999999`). When you need more than 12 digits, ask GIAC for a
+multiprecision value with `Giac.Commands.evalf(x, n)`, or keep the input
+exact: `1/10`, `exact(0.1)` and Julia's `1//10` stay exact rationals through
+GIAC, and `to_julia` gives them back as `1//10`.
+
+**Multiprecision reals (`REAL`) are read from their decimal**, which carries
+all their digits; `float` keeps the `BigFloat` precision the decimal implies.
+
+**Fractions (`FRAC`)** read as `Rational{Int64}`, or `Rational{BigInt}` when a
+part does not fit a machine integer. GIAC stores a complex number with a
+rational part as a fraction whose numerator is a Gaussian integer, so such a
+number reads as a `Complex` of `Rational`s:
+
+```julia
+to_julia(giac_eval("(3+2*i)/4"))       # 3//4 + 1//2*im
+to_julia(giac_eval("[1/2, 1/3+i/4]"))  # Complex{Rational{Int64}}[1//2 + 0//1*im, 1//3 + 1//4*im]
+Complex(giac_eval("(3+2*i)/4"))        # 3//4 + 1//2*im
+Rational(giac_eval("(3+2*i)/4"))       # InexactError, as for Rational(3//4 + 1//2*im)
+```
+
+Before, these raised `ArgumentError` (the Gaussian numerator could not be
+parsed as an integer), and `Complex(g)` of any fraction raised `MethodError`.
+
+**GIAC's `epsilon` is left as it was.** GIAC's `evalf` of a `rootof` to `n`
+digits sets `epsilon`, the tolerance of its numeric algorithms, to `10⁻ⁿ`
+for the rest of the session; numeric integrals then return two estimates
+instead of a value. `Giac.Commands.evalf(x, n)` and `invoke_cmd(:evalf, x, n)`
+put `epsilon` back afterwards, and so does `to_julia`, which reduces a
+constant with `evalf(x, 18)`. Assigning `epsilon` yourself
+(`giac_eval("epsilon:=1e-8")`) is unaffected.
+
 ### Core Functions
 
 | Function | Description |

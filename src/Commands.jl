@@ -159,6 +159,14 @@ function invoke_cmd(cmd::Symbol, args...)::GiacExpr
         args = map(_hold_render_arg, args)
     end
 
+    # GIAC's evalf to n digits of a rootof leaves epsilon at 10⁻ⁿ for the session, after which
+    # numeric integrals return two estimates: epsilon is put back
+    if cmd === :evalf && length(args) >= 2 && !get(task_local_storage(), :giac_evalf_kept, false)
+        return parentmodule(@__MODULE__)._keeping_epsilon() do
+            task_local_storage(() -> invoke_cmd(cmd, args...), :giac_evalf_kept, true)
+        end
+    end
+
     # Fast path (069-invoke-cmd-fastpath): bypass _arg_to_giac_string + giac_eval
     # when every argument has a direct Gen representation. Set
     # GIAC_INVOKE_CMD_STRING_PATH=1 to disable globally.

@@ -22,7 +22,7 @@ Recursively convert a GIAC expression to native Julia types.
 | `INT` | `Int64` |
 | `ZINT` | `BigInt` |
 | `DOUBLE`, `REAL` | `Float64` |
-| `FRAC` | `Rational{Int64}` or `Rational{BigInt}` |
+| `FRAC` | `Rational{Int64}` or `Rational{BigInt}`, or a `Complex` of one |
 | `CPLX` | `Complex{T}` (T promoted from parts) |
 | `VECT` | `Vector{T}` (T narrowed from elements) |
 | `STRNG` | `String` (the characters, without GIAC's quotes) |
@@ -34,6 +34,12 @@ returns `true`), `to_julia` calls `Giac.Commands.evalf` to reduce it to a
 numeric value and then recurses, so `to_julia(substitute(sin(x), x => 2))`
 returns a `Float64`, not `GiacExpr: sin(2)`. The layered design — `evalf(...)`
 keeps you in Giac, `to_julia(...)` bridges to Julia — is preserved.
+
+A `DOUBLE` is read from the decimal GIAC prints for it (`Digits`, 12
+significant digits by default): `to_julia(giac_eval("0.1+0.2"))` is `0.3`.
+A complex fraction such as `(3+2*i)/4` — GIAC stores it as a fraction with a
+Gaussian-integer numerator — is a `Complex{Rational{Int64}}`, `3//4 + 1//2*im`.
+See [How numbers are read](@ref) for the details.
 
 Note: GIAC represents booleans as integers internally, but `to_julia` detects them
 via their string representation ("true"/"false") and returns Julia `Bool` values.
@@ -336,23 +342,15 @@ end
 # Compound Type Conversion Helpers
 # ============================================================================
 
+# A complex rational is a FRAC with a Gaussian-integer numerator, so this returns a
+# `Complex{Rational}` for one.
 function _convert_to_rational(g::GiacExpr)
-    num_expr = numer(g)
-    den_expr = denom(g)
-
-    num_type = giac_type(num_expr)
-    den_type = giac_type(den_expr)
-
-    # Check if either is BigInt (ZINT)
-    if num_type == ZINT || den_type == ZINT
-        num = to_julia(num_expr)::Union{Int64, BigInt}
-        den = to_julia(den_expr)::Union{Int64, BigInt}
-        return Rational{BigInt}(BigInt(num), BigInt(den))
-    else
-        num = _convert_to_int64(num_expr)
-        den = _convert_to_int64(den_expr)
-        return Rational{Int64}(num, den)
-    end
+    num = to_julia(numer(g))
+    den = to_julia(denom(g))
+    GaussianInteger = Union{Integer, Complex{<:Integer}}
+    (num isa GaussianInteger && den isa GaussianInteger) ||
+        throw(GiacError("Cannot read $(string(g)) as a fraction of integers", :type))
+    return num // den
 end
 
 function _convert_to_complex(g::GiacExpr)
@@ -589,7 +587,9 @@ Base.convert(::Type{Rational{T}}, g::GiacExpr) where {T<:Integer} = Rational{T}(
 """
     Complex(g::GiacExpr) -> Complex
 
-The complex behind a `CPLX` `GiacExpr`; a real numeric one widens.
+The complex behind a `CPLX` `GiacExpr`, or a complex fraction such as
+`(3+2*i)/4` (a `Complex{Rational}`); a real numeric one, a real fraction
+included, widens.
 """
 Base.Complex(g::GiacExpr) = convert(Complex, g)
 (::Type{Complex{T}})(g::GiacExpr) where {T<:Real} =
@@ -611,12 +611,15 @@ end
 """
     Base.convert(::Type{Rational}, g::GiacExpr) -> Rational
 
-Convert a fraction or integer GiacExpr to a Rational.
+Convert a fraction or integer GiacExpr to a Rational. A complex fraction such
+as `(3+2*i)/4` raises `InexactError`; use `Complex(g)` for it.
 """
 function Base.convert(::Type{Rational}, g::GiacExpr)::Rational
     t = giac_type(g)
     if t == FRAC
-        return _convert_to_rational(g)
+        r = _convert_to_rational(g)
+        r isa Rational || throw(InexactError(:Rational, Rational, g))
+        return r
     elseif t == INT
         return Rational(_convert_to_int64(g))
     elseif t == ZINT
@@ -629,12 +632,16 @@ end
 """
     Base.convert(::Type{Complex}, g::GiacExpr) -> Complex
 
-Convert a complex GiacExpr to a Julia Complex.
+Convert a complex GiacExpr to a Julia Complex. A fraction, complex (`(3+2*i)/4`,
+which GIAC stores as a fraction with a Gaussian-integer numerator) or real,
+gives a `Complex` of `Rational`s.
 """
 function Base.convert(::Type{Complex}, g::GiacExpr)::Complex
     t = giac_type(g)
     if t == CPLX
         return _convert_to_complex(g)
+    elseif t == FRAC
+        return Complex(_convert_to_rational(g))
     elseif is_numeric(g)
         # Numeric but not complex - treat as real
         val = to_julia(g)

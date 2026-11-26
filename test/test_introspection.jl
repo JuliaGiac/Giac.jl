@@ -398,6 +398,11 @@
     @testset "terminterface names" begin
         @test length(Giac.arguments(giac_eval("a*b*c"))) == 3
         @test Giac.arguments(sin(giac_eval("x"))) == [giac_eval("x")]
+        # A part is taken as stored, not printed and evaluated again: the unit
+        # `_m` of `3_m` evaluated again is the quantity `1_m`, whose arguments
+        # are `1` and `1_m` again, without end.
+        @test string.(Giac.arguments(giac_eval("3_m"))) == ["3", "_m"]
+        @test string(Giac.symb_argument(giac_eval("3_m"))) == "[3,_m]"
 
         @test Giac.operation(giac_eval("a*b*c")) == *
         @test Giac.operation(sin(giac_eval("x"))) == sin
@@ -526,6 +531,8 @@
         # Pre-existing numeric / boolean / vector paths are untouched.
         @test to_julia(giac_eval("42"))  === 42
         @test to_julia(giac_eval("3/4")) === 3//4
+        @test to_julia(giac_eval("1/3 + 2/5*i")) === 1//3 + 2//5 * im
+        @test to_julia(giac_eval("2^70/3")) == big(2)^70 // 3
         @test to_julia(giac_eval("true"))
         @test to_julia(giac_eval("[1,2,3]")) == [1, 2, 3]
     end
