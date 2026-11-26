@@ -52,10 +52,11 @@ sequenceDiagram
     Note over User: GiacExpr goes out of scope
     User->>GiacExpr: (unreachable)
 
-    Note over GiacExpr: Julia GC runs
+    Note over GiacExpr: Julia GC runs (any thread)
     GiacExpr->>Finalizer: Trigger finalizer
-    Finalizer->>C++: _giac_free_expr(ptr)
-    C++-->>Finalizer: Memory freed
+    Finalizer->>Finalizer: _giac_free_expr(ptr) queues the handle
+    Note over Finalizer: next with_giac_lock
+    Finalizer->>C++: handle dropped, giac::gen freed
 ```
 
 ### Creation
@@ -92,11 +93,15 @@ When the Julia GC determines the object is unreachable, the finalizer runs:
 ```julia
 function _finalize_giacexpr(expr::GiacExpr)
     if expr.ptr != C_NULL
-        _giac_free_expr(expr.ptr)  # Call C++ destructor
+        _giac_free_expr(expr.ptr)  # Queue the handle (see "Freeing under the lock")
         expr.ptr = C_NULL  # Prevent double-free
     end
 end
 ```
+
+`_giac_free_expr` does not free anything itself: the finalizer may run on any
+thread, at a moment when another thread is inside GIAC. It queues the handle,
+and the next task to take the GIAC lock frees it.
 
 ## Finalizer Functions
 
@@ -147,28 +152,29 @@ function _finalize_giacmatrix(m::GiacMatrix)
 end
 ```
 
-**Called when**: A `GiacMatrix` object is garbage collected.
+**Called when**: A `GiacMatrix` object that owns its handle is garbage
+collected. A matrix built from an expression (`GiacMatrix(expr)`) borrows the
+expression's handle, keeps the expression alive, and has no finalizer.
 
 ## Thread Safety
 
-GIAC is not inherently thread-safe, so Giac.jl uses locks to prevent concurrent access.
+GIAC is not thread-safe, so Giac.jl serializes every call into GIAC with one
+process-wide lock, `Giac.GIAC_LOCK`.
 
 ### The `with_giac_lock` Pattern
 
 All evaluation operations use `with_giac_lock`:
 
 ```julia
-function with_giac_lock(f::Function, ctx::GiacContext=DEFAULT_CONTEXT)
-    lock(ctx.lock)
-    try
-        return f()
-    finally
-        unlock(ctx.lock)
+const GIAC_LOCK = ReentrantLock()
+
+function with_giac_lock(f)
+    lock(GIAC_LOCK) do
+        _free_doomed!()     # free what finalizers queued
+        f()
     end
 end
 ```
-
-### Usage in Code
 
 ```julia
 # In command_utils.jl
@@ -181,24 +187,91 @@ function giac_cmd(cmd::Symbol, args...)::GiacExpr
 end
 ```
 
-### GiacContext Lock
+**Why ReentrantLock?** The same task can take it again in nested calls (an
+operator calls a tier-1 helper that looks up a handle, each under the lock).
+Holding a `ReentrantLock` also stops finalizers from running on that thread
+until it is released.
 
-Each `GiacContext` contains a `ReentrantLock`:
+### Freeing under the lock
+
+Julia runs a finalizer on whichever thread collects garbage, possibly while
+another thread is inside GIAC, and GIAC objects share reference-counted parts
+whose counts are not atomic. A finalizer therefore never frees a GIAC object
+nor touches the handle tables (`_gen_objects`, `_context_objects`). It only
+queues what is to be freed, under a `Threads.SpinLock` (which a finalizer may
+take), and the next call to `with_giac_lock` frees the queue:
+
+| Queued by | What is freed under the lock |
+|-----------|------------------------------|
+| `GiacExpr`, `GiacMatrix` finalizer | the entry in `_gen_objects` |
+| `GiacContext` finalizer | the entry in `_context_objects` |
+| CxxWrap finalizer of a `Gen`, a `GiacContext` or a `std::vector<Gen>` | the C++ object itself |
+
+Dropping a table entry only drops a reference: the `Gen` behind it may be
+shared, and is destroyed by its own (queued) CxxWrap finalizer once nothing
+refers to it. CxxWrap's finalizer is redirected by a method of
+`CxxWrap.CxxWrapCore.delete` for these types (see `src/wrapper.jl`).
+
+### Keeping the owner alive
+
+A handle is a plain number. Once a function has read `expr.ptr`, `expr`
+itself may be unreachable, and the collector may finalize it before the handle
+is looked up; the handle is then gone (`<unknown>`, or an evaluation in the
+default context for a collected `GiacContext`). Code that passes a handle on
+keeps its owner alive with `GC.@preserve`:
 
 ```julia
-mutable struct GiacContext
-    ptr::Ptr{Cvoid}
-    lock::ReentrantLock  # For thread safety
-
-    function GiacContext(ptr::Ptr{Cvoid})
-        ctx = new(ptr, ReentrantLock())
-        finalizer(_finalize_giaccontext, ctx)
-        return ctx
+function Base.:+(a::GiacExpr, b::GiacExpr)::GiacExpr
+    with_giac_lock() do
+        ptr = GC.@preserve a b _giac_add(a.ptr, b.ptr)
+        # ...
     end
 end
 ```
 
-**Why ReentrantLock?**: Allows the same thread to acquire the lock multiple times (nested calls), which is necessary for complex expression evaluation.
+### Threads
+
+Calling Giac from several tasks or threads at once is memory-safe: the calls
+wait for one another on the lock, so there is no parallel speed-up for GIAC
+work itself. A `GiacExpr` is a value and can be created on one thread and used
+on another.
+
+The exception is the package extensions' conversions (`to_symbolics`,
+`to_giac` from Symbolics, SymPy, MathJSON or Nemo values, `to_sympy`,
+`to_mathjson`, `to_nemo`): they build and walk GIAC objects through the
+wrapper without taking the lock, so do not run them while another task is in
+Giac.
+
+What is **not** shared between threads is the default context. The C++
+wrapper keeps the context used by every call that does not name one in a
+`thread_local` variable, so each OS thread has its own: its own `:=`
+bindings, its own settings (`Digits`, `complex_mode`, ...) and its own
+assumptions (`assume`, `@giac_var x::positive`). A task that `Threads.@spawn`
+runs on another thread does not see them:
+
+```julia
+@giac_var w::positive
+giac_eval("a := 5")
+string(Giac.Commands.simplify(sqrt(w^2)))           # "w"
+fetch(Threads.@spawn string(giac_eval("a")))        # "a", not "5", on another thread
+fetch(Threads.@spawn string(Giac.Commands.simplify(sqrt(w^2))))   # "abs(w)"
+```
+
+With one thread (`julia` started without `-t`) every task runs on the same OS
+thread and shares the default context. With several, `Threads.@spawn` may run
+a task on any thread, and Julia may move a task between threads when it
+yields, so which context it sees is not even fixed for the task's lifetime.
+
+Ways to work with this:
+
+- Run work that depends on bindings, settings or assumptions on the thread
+  that made them. `@async` tasks stay on the thread that starts them.
+- Pass an explicit `GiacContext` to `giac_eval(string, ctx)`. Its bindings
+  and settings are the same from every thread. Only `giac_eval` takes a
+  context: arithmetic, `Giac.Commands`, `invoke_cmd` and the conversions use
+  the default context of the thread they run on.
+- Make each spawned task set up what it needs (its bindings, `Digits`,
+  assumptions) itself, inside the task.
 
 ## Best Practices
 
@@ -268,21 +341,23 @@ function get_value(expr::GiacExpr)
 end
 ```
 
-### Don't: Hold References Across Threads
+### Don't: Rely on the Default Context Across Threads
 
-Avoid sharing `GiacExpr` between threads without proper synchronization:
+Sharing a `GiacExpr` between threads is safe, but bindings, settings and
+assumptions of the default context are per OS thread (see [Threads](@ref)):
 
 ```julia
-# Risky: expr shared across threads
-@threads for i in 1:10
-    result = sin(expr)  # Race condition!
+# Wrong with several threads: the assumption is made on the main thread only
+@giac_var w::positive
+Threads.@threads for i in 1:10
+    Giac.Commands.simplify(sqrt(w^2))     # abs(w) on the other threads
 end
 
-# Better: Create local copies or use proper synchronization
-results = Vector{GiacExpr}(undef, 10)
-@threads for i in 1:10
-    local_expr = giac_eval(string(expr))  # Local copy
-    results[i] = sin(local_expr)
+# Better: an explicit context, set up once, shared by every thread
+ctx = GiacContext()
+giac_eval("assume(w > 0)", ctx)
+Threads.@threads for i in 1:10
+    giac_eval("simplify(sqrt(w^2))", ctx)   # w
 end
 ```
 
@@ -323,9 +398,14 @@ expr = giac_eval("x")
 
 **Symptom**: Intermittent crashes or wrong results with multithreading.
 
-**Cause**: Multiple threads accessing GIAC without synchronization.
+**Cause**: Multiple threads accessing GIAC without synchronization, a
+finalizer freeing GIAC objects outside the lock, or a handle used after its
+owner was collected.
 
-**Fix**: Use `with_giac_lock` for all GIAC operations.
+**Fix**: Use `with_giac_lock` for all GIAC operations, free GIAC objects only
+from the queue `with_giac_lock` empties, and hold the owner of a handle under
+`GC.@preserve` while the handle is in use. If results differ between threads
+only, see [Threads](@ref): the default context is per thread.
 
 ### Double Free
 
