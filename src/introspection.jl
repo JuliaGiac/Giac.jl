@@ -52,14 +52,10 @@ function giac_type(g::GiacExpr)::T
 
     with_giac_lock() do
         if GiacCxxBindings._have_library
-            # Get the expression string and evaluate it to get a Gen object
-            expr_str = string(g)
-            try
-                gen = GiacCxxBindings.giac_eval(expr_str)
-                return T(GiacCxxBindings.type(gen))
-            catch e
-                @debug "Failed to get type via CxxWrap: $e"
-            end
+            # the stored value, not its printed form evaluated again (ported from Kahli
+            # Burke's `ergonomics` branch)
+            gen = _ptr_to_gen(g)
+            gen === nothing || return T(GiacCxxBindings.type(gen))
         end
         # Fallback: use existing _giac_expr_type and map to constants
         expr_type = GC.@preserve g _giac_expr_type(g.ptr)
@@ -88,13 +84,8 @@ function subtype(g::GiacExpr)::Int32
 
     with_giac_lock() do
         if GiacCxxBindings._have_library
-            expr_str = string(g)
-            try
-                gen = GiacCxxBindings.giac_eval(expr_str)
-                return Int32(GiacCxxBindings.subtype(gen))
-            catch e
-                @debug "Failed to get subtype via CxxWrap: $e"
-            end
+            gen = _ptr_to_gen(g)
+            gen === nothing || return Int32(GiacCxxBindings.subtype(gen))
         end
         return Int32(0)  # Default subtype
     end

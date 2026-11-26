@@ -538,3 +538,15 @@
     end
 
 end
+
+@testset "giac_type and subtype read the stored value" begin
+    # A physical unit's name, taken apart from 3_m, is an identifier. Read from its printed form,
+    # "_m" evaluates again to the quantity 1_m, a symbolic expression.
+    unit = Giac.arguments(giac_eval("3_m"))[2]
+    @test string(unit) == "_m"
+    @test giac_type(unit) == Giac.IDNT
+    @test is_identifier(unit)
+    # the subtype of a set is read as stored too
+    @test subtype(giac_eval("set[1,2]")) == 2
+    @test subtype(giac_eval("[1,2]")) == 0
+end
