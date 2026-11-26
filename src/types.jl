@@ -77,7 +77,7 @@ function Base.string(expr::GiacExpr)::String
     if expr.ptr == C_NULL
         return "<null GiacExpr>"
     end
-    return _giac_expr_to_string(expr.ptr)
+    return GC.@preserve expr _giac_expr_to_string(expr.ptr)
 end
 
 function Base.show(io::IO, expr::GiacExpr)
@@ -1105,7 +1105,7 @@ function Base.getindex(m::GiacMatrix, i::Int, j::Int)
     if i < 1 || i > m.rows || j < 1 || j > m.cols
         throw(BoundsError(m, (i, j)))
     end
-    ptr = _giac_matrix_getindex(m.ptr, i - 1, j - 1)  # 0-indexed in C
+    ptr = GC.@preserve m _giac_matrix_getindex(m.ptr, i - 1, j - 1) # 0-indexed in C
     return GiacExpr(ptr)
 end
 

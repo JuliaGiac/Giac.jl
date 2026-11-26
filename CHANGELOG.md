@@ -83,6 +83,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`giac_eval` accepts any string** (Kahli Burke), such as a `SubString` from
   `split`.
 
+- **Documentation of threads and the default context**
+  (`docs/src/developer/memory.md`, "Threads"): the default context is per OS
+  thread, so a `:=` binding or a setting made from
+  a task on another thread is not seen from the main thread. Use an explicit
+  `GiacContext`, which every thread shares, or `@async` tasks, which stay on
+  their thread.
 - **Broadcasting over Giac lists and matrices** ([#33](https://github.com/JuliaGiac/Giac.jl/pull/33),
   fixes [#20](https://github.com/JuliaGiac/Giac.jl/issues/20) and
   [#34](https://github.com/JuliaGiac/Giac.jl/issues/34)). `convert.(Float64, u)`
@@ -220,6 +226,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **GIAC objects are freed only under the GIAC lock** (ported from Kahli
+  Burke's `ergonomics` branch). Julia runs finalizers on whichever thread
+  collects garbage, possibly while another thread is inside GIAC, whose
+  objects share non-atomic reference counts; finalizers of `GiacExpr`,
+  `GiacContext` and `GiacMatrix`, and CxxWrap's finalizers of `Gen`,
+  `GiacContext` and `std::vector<Gen>` objects, now only queue what is to be
+  freed, and the next task to take the GIAC lock frees it. The handle tables
+  and the remaining unlocked wrapper calls (`list_commands`, `help_count`,
+  the tier-1 helpers, rational and complex accessors, `substitute`'s vector
+  path) go through the lock too. Using Giac from several tasks or threads at
+  once is now memory-safe; calls are still serialized.
+- **An expression is kept alive while its handle is in use.** Code that
+  passed `expr.ptr` on let the collector finalize `expr` before the handle
+  was looked up, so a temporary could print as `<unknown>` (or a collected
+  `GiacContext` evaluate in the default one). Every such call now holds its
+  owner under `GC.@preserve`.
+- **A `GiacMatrix` releases its expression when collected.** Its finalizer
+  did nothing, so every matrix built by `GiacMatrix(::AbstractMatrix)`,
+  matrix arithmetic, `inv` or `transpose` kept its GIAC value until the end
+  of the session.
 - **`to_giac` no longer overflows the stack on irrational constants**
   ([#89](https://github.com/JuliaGiac/Giac.jl/issues/89)). With Symbolics 7,
   `Num(pi)` unwraps to `identity(π)` around the `Irrational` `π`. SymbolicUtils

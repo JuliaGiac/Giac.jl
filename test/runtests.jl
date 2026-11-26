@@ -21,6 +21,7 @@ using LinearAlgebra
     include("test_calculus.jl")
     include("test_algebra.jl")
     include("test_linalg.jl")
+    include("test_threads.jl")
     include("test_matrix_iteration.jl")
     include("test_memory.jl")
 

@@ -62,7 +62,7 @@ function giac_type(g::GiacExpr)::T
             end
         end
         # Fallback: use existing _giac_expr_type and map to constants
-        expr_type = _giac_expr_type(g.ptr)
+        expr_type = GC.@preserve g _giac_expr_type(g.ptr)
         return _symbol_to_type_const(expr_type)
     end
 end
@@ -126,12 +126,12 @@ end
 function _ptr_to_gen(g::GiacExpr)
     if GiacCxxBindings._have_library
         # Try to retrieve stored Gen directly (no string serialization)
-        gen = _get_gen(g.ptr)
+        gen = GC.@preserve g _get_gen(g.ptr)
         if gen !== nothing
             return gen
         end
         # Fallback: eval from string representation
-        return GiacCxxBindings.giac_eval(string(g))
+        return with_giac_lock(() -> GiacCxxBindings.giac_eval(string(g)))
     end
     return nothing
 end
@@ -395,7 +395,7 @@ function numer(g::GiacExpr)::GiacExpr
                 end
             end
             # Fallback: get numerator value
-            num_val = _giac_rational_num(g.ptr)
+            num_val = GC.@preserve g _giac_rational_num(g.ptr)
             return giac_eval(string(num_val))
         end
     else
@@ -433,7 +433,7 @@ function denom(g::GiacExpr)::GiacExpr
                 end
             end
             # Fallback: get denominator value
-            den_val = _giac_rational_den(g.ptr)
+            den_val = GC.@preserve g _giac_rational_den(g.ptr)
             return giac_eval(string(den_val))
         end
     else
@@ -468,7 +468,7 @@ function real_part(g::GiacExpr)::GiacExpr
                 end
             end
             # Fallback: get real part value
-            re_val = _giac_complex_real(g.ptr)
+            re_val = GC.@preserve g _giac_complex_real(g.ptr)
             return giac_eval(string(re_val))
         end
     else
@@ -503,7 +503,7 @@ function imag_part(g::GiacExpr)::GiacExpr
                 end
             end
             # Fallback: get imaginary part value
-            im_val = _giac_complex_imag(g.ptr)
+            im_val = GC.@preserve g _giac_complex_imag(g.ptr)
             return giac_eval(string(im_val))
         end
     else

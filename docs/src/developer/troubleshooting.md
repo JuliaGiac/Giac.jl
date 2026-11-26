@@ -157,6 +157,20 @@ ERROR: Cannot convert GiacExpr to Float64
    to_julia(ComplexF64, result)  # Works
    ```
 
+### Different Results on Another Thread
+
+**Symptom**: with Julia started with several threads (`julia -t 4`), a task
+started with `Threads.@spawn` does not see a variable bound with `:=`, a
+setting such as `Digits`, or an assumption made with `assume` or
+`@giac_var x::positive` on the main thread.
+
+**Cause**: GIAC's default context is per OS thread. See
+[Threads](memory.md#Threads) in the memory guide.
+
+**Fix**: pass an explicit `GiacContext` to `giac_eval(string, ctx)`, which
+every thread shares, or run the work in `@async` tasks, which stay on the
+thread that starts them.
+
 ## Performance Issues
 
 ### Identifying Tier Fallbacks

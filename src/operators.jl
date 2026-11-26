@@ -12,7 +12,7 @@ Add two GIAC expressions.
 """
 function Base.:+(a::GiacExpr, b::GiacExpr)::GiacExpr
     with_giac_lock() do
-        ptr = _giac_add(a.ptr, b.ptr)
+        ptr = GC.@preserve a b _giac_add(a.ptr, b.ptr)
         if ptr == C_NULL
             throw(GiacError("Addition failed", :eval))
         end
@@ -27,7 +27,7 @@ Subtract two GIAC expressions.
 """
 function Base.:-(a::GiacExpr, b::GiacExpr)::GiacExpr
     with_giac_lock() do
-        ptr = _giac_sub(a.ptr, b.ptr)
+        ptr = GC.@preserve a b _giac_sub(a.ptr, b.ptr)
         if ptr == C_NULL
             throw(GiacError("Subtraction failed", :eval))
         end
@@ -42,7 +42,7 @@ Negate a GIAC expression.
 """
 function Base.:-(a::GiacExpr)::GiacExpr
     with_giac_lock() do
-        ptr = _giac_neg(a.ptr)
+        ptr = GC.@preserve a _giac_neg(a.ptr)
         if ptr == C_NULL
             throw(GiacError("Negation failed", :eval))
         end
@@ -57,7 +57,7 @@ Multiply two GIAC expressions.
 """
 function Base.:*(a::GiacExpr, b::GiacExpr)::GiacExpr
     with_giac_lock() do
-        ptr = _giac_mul(a.ptr, b.ptr)
+        ptr = GC.@preserve a b _giac_mul(a.ptr, b.ptr)
         if ptr == C_NULL
             throw(GiacError("Multiplication failed", :eval))
         end
@@ -72,7 +72,7 @@ Divide two GIAC expressions.
 """
 function Base.:/(a::GiacExpr, b::GiacExpr)::GiacExpr
     with_giac_lock() do
-        ptr = _giac_div(a.ptr, b.ptr)
+        ptr = GC.@preserve a b _giac_div(a.ptr, b.ptr)
         if ptr == C_NULL
             throw(GiacError("Division failed", :eval))
         end
@@ -87,7 +87,7 @@ Raise a GIAC expression to a power.
 """
 function Base.:^(a::GiacExpr, b::GiacExpr)::GiacExpr
     with_giac_lock() do
-        ptr = _giac_pow(a.ptr, b.ptr)
+        ptr = GC.@preserve a b _giac_pow(a.ptr, b.ptr)
         if ptr == C_NULL
             throw(GiacError("Exponentiation failed", :eval))
         end
@@ -146,7 +146,7 @@ Note: This performs symbolic equality check, not numerical.
 """
 function Base.:(==)(a::GiacExpr, b::GiacExpr)::Bool
     with_giac_lock() do
-        return _giac_equal(a.ptr, b.ptr)
+        return GC.@preserve a b _giac_equal(a.ptr, b.ptr)
     end
 end
 
@@ -308,7 +308,7 @@ function Base.:*(A::GiacMatrix, B::GiacMatrix)::GiacMatrix
     end
 
     with_giac_lock() do
-        ptr = _giac_matrix_mul(A.ptr, B.ptr)
+        ptr = GC.@preserve A B _giac_matrix_mul(A.ptr, B.ptr)
         if ptr == C_NULL
             throw(GiacError("Matrix multiplication failed", :eval))
         end
@@ -327,7 +327,7 @@ function Base.:+(A::GiacMatrix, B::GiacMatrix)::GiacMatrix
     end
 
     with_giac_lock() do
-        ptr = _giac_matrix_add(A.ptr, B.ptr)
+        ptr = GC.@preserve A B _giac_matrix_add(A.ptr, B.ptr)
         if ptr == C_NULL
             throw(GiacError("Matrix addition failed", :eval))
         end
@@ -346,7 +346,7 @@ function Base.:-(A::GiacMatrix, B::GiacMatrix)::GiacMatrix
     end
 
     with_giac_lock() do
-        ptr = _giac_matrix_sub(A.ptr, B.ptr)
+        ptr = GC.@preserve A B _giac_matrix_sub(A.ptr, B.ptr)
         if ptr == C_NULL
             throw(GiacError("Matrix subtraction failed", :eval))
         end
@@ -362,7 +362,7 @@ Scalar multiplication of matrix.
 function Base.:*(A::GiacMatrix, c::Number)::GiacMatrix
     scalar = convert(GiacExpr, c)
     with_giac_lock() do
-        ptr = _giac_matrix_scalar_mul(A.ptr, scalar.ptr)
+        ptr = GC.@preserve A scalar _giac_matrix_scalar_mul(A.ptr, scalar.ptr)
         if ptr == C_NULL
             throw(GiacError("Scalar multiplication failed", :eval))
         end
