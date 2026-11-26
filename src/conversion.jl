@@ -581,7 +581,9 @@ Base.convert(::Type{Rational{T}}, g::GiacExpr) where {T<:Integer} = Rational{T}(
 """
     Complex(g::GiacExpr) -> Complex
 
-The complex behind a `CPLX` `GiacExpr`; a real numeric one widens.
+The complex behind a `CPLX` `GiacExpr`, or a complex fraction such as
+`(3+2*i)/4` (a `Complex{Rational}`); a real numeric one, a real fraction
+included, widens.
 """
 Base.Complex(g::GiacExpr) = convert(Complex, g)
 (::Type{Complex{T}})(g::GiacExpr) where {T<:Real} =
@@ -603,12 +605,15 @@ end
 """
     Base.convert(::Type{Rational}, g::GiacExpr) -> Rational
 
-Convert a fraction or integer GiacExpr to a Rational.
+Convert a fraction or integer GiacExpr to a Rational. A complex fraction such
+as `(3+2*i)/4` raises `InexactError`; use `Complex(g)` for it.
 """
 function Base.convert(::Type{Rational}, g::GiacExpr)::Rational
     t = giac_type(g)
     if t == FRAC
-        return _convert_to_rational(g)
+        r = _convert_to_rational(g)
+        r isa Rational || throw(InexactError(:Rational, Rational, g))
+        return r
     elseif t == INT
         return Rational(_convert_to_int64(g))
     elseif t == ZINT
@@ -621,12 +626,16 @@ end
 """
     Base.convert(::Type{Complex}, g::GiacExpr) -> Complex
 
-Convert a complex GiacExpr to a Julia Complex.
+Convert a complex GiacExpr to a Julia Complex. A fraction, complex (`(3+2*i)/4`,
+which GIAC stores as a fraction with a Gaussian-integer numerator) or real,
+gives a `Complex` of `Rational`s.
 """
 function Base.convert(::Type{Complex}, g::GiacExpr)::Complex
     t = giac_type(g)
     if t == CPLX
         return _convert_to_complex(g)
+    elseif t == FRAC
+        return Complex(_convert_to_rational(g))
     elseif is_numeric(g)
         # Numeric but not complex - treat as real
         val = to_julia(g)
