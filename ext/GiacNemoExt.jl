@@ -58,6 +58,10 @@ const ALGEBRAIC_OPS = Set(["+", "-", "*", "/", "^", "inv", "neg", "unsigned_nume
 
 # ===========================================================================
 # Helpers — BigInt <-> Gen (mirror GiacSymPyExt / GiacSymbolicsExt)
+#
+# The helpers that make wrapper calls expect their caller to hold the GIAC
+# lock. The entry points take it around the GIAC part of a conversion only,
+# so that Nemo (FLINT) work runs outside it.
 # ===========================================================================
 
 function _bigint_to_gen(n::BigInt)
@@ -147,10 +151,12 @@ Convert a Nemo integer to a `GiacExpr` (ZINT for arbitrary precision).
 """
 function Giac.to_giac(e::ZZRingElem)
     n = BigInt(e)
-    if typemin(Int32) <= n <= typemax(Int32)
-        return GiacExpr(Giac._gen_to_ptr(Giac.GiacCxxBindings.Gen(Int32(n))))
+    return Giac.with_giac_lock() do
+        if typemin(Int32) <= n <= typemax(Int32)
+            return GiacExpr(Giac._gen_to_ptr(Giac.GiacCxxBindings.Gen(Int32(n))))
+        end
+        return GiacExpr(Giac._gen_to_ptr(_bigint_to_gen(n)))
     end
-    return GiacExpr(Giac._gen_to_ptr(_bigint_to_gen(n)))
 end
 
 """
@@ -159,10 +165,12 @@ end
 Convert a Nemo rational to a `GiacExpr` (GIAC fraction).
 """
 function Giac.to_giac(e::QQFieldElem)
-    g = Giac.GiacCxxBindings
-    num = _bigint_to_gen(BigInt(numerator(e)))
-    den = _bigint_to_gen(BigInt(denominator(e)))
-    return GiacExpr(Giac._gen_to_ptr(g.make_fraction(num, den)))
+    n, d = BigInt(numerator(e)), BigInt(denominator(e))
+    return Giac.with_giac_lock() do
+        num = _bigint_to_gen(n)
+        den = _bigint_to_gen(d)
+        GiacExpr(Giac._gen_to_ptr(Giac.GiacCxxBindings.make_fraction(num, den)))
+    end
 end
 
 """
@@ -175,16 +183,24 @@ polynomial ring's generator.
 function Giac.to_giac(e::PolyRingElem)
     R = parent(e)
     vname = string(gen(R))
-    gen_ident = Giac.GiacCxxBindings.make_identifier(vname)
     coeffs = collect(coefficients(e))   # low -> high
-    terms = Giac.GiacCxxBindings.Gen[]
-    for (k, c) in enumerate(coeffs)
-        k0 = k - 1
-        c_gen = Giac._ptr_to_gen(to_giac(c))
-        term = _gen_pow(gen_ident, k0)
-        push!(terms, _gen_mul(c_gen, term))
+    return _poly_to_giac(vname, GiacExpr[to_giac(c) for c in coeffs])
+end
+
+# The symbolic sum of `cs[k+1] * var^k`. The coefficients are converted by the
+# caller, so that Nemo (FLINT) runs outside the GIAC lock and only the GIAC
+# tree is built under it.
+function _poly_to_giac(vname::String, cs::Vector{GiacExpr})::GiacExpr
+    return GC.@preserve cs Giac.with_giac_lock() do
+        gen_ident = Giac.GiacCxxBindings.make_identifier(vname)
+        terms = Giac.GiacCxxBindings.Gen[]
+        for (k, c) in enumerate(cs)
+            c_gen = Giac._ptr_to_gen(c)
+            term = _gen_pow(gen_ident, k - 1)
+            push!(terms, _gen_mul(c_gen, term))
+        end
+        GiacExpr(Giac._gen_to_ptr(_gen_sum(terms)))
     end
-    return GiacExpr(Giac._gen_to_ptr(_gen_sum(terms)))
 end
 
 """
@@ -198,15 +214,8 @@ function Giac.to_giac(e::FqFieldElem)
     F = parent(e)
     d = Int(degree(F))
     vname = string(gen(F))
-    gen_ident = Giac.GiacCxxBindings.make_identifier(vname)
-    terms = Giac.GiacCxxBindings.Gen[]
-    for k in 0:(d - 1)
-        c = Nemo._coeff(e, k)            # ZZRingElem
-        c_gen = Giac._ptr_to_gen(to_giac(c))
-        term = _gen_pow(gen_ident, k)
-        push!(terms, _gen_mul(c_gen, term))
-    end
-    return GiacExpr(Giac._gen_to_ptr(_gen_sum(terms)))
+    cs = GiacExpr[to_giac(Nemo._coeff(e, k)) for k in 0:(d - 1)]   # ZZRingElem coefficients
+    return _poly_to_giac(vname, cs)
 end
 
 """
@@ -220,15 +229,8 @@ function Giac.to_giac(e::AbsSimpleNumFieldElem)
     K = parent(e)
     d = Int(degree(K))
     vname = string(gen(K))
-    gen_ident = Giac.GiacCxxBindings.make_identifier(vname)
-    terms = Giac.GiacCxxBindings.Gen[]
-    for k in 0:(d - 1)
-        c = Nemo.coeff(e, k)             # QQFieldElem
-        c_gen = Giac._ptr_to_gen(to_giac(c))
-        term = _gen_pow(gen_ident, k)
-        push!(terms, _gen_mul(c_gen, term))
-    end
-    return GiacExpr(Giac._gen_to_ptr(_gen_sum(terms)))
+    cs = GiacExpr[to_giac(Nemo.coeff(e, k)) for k in 0:(d - 1)]     # QQFieldElem coefficients
+    return _poly_to_giac(vname, cs)
 end
 
 """
@@ -266,7 +268,8 @@ end
 # ===========================================================================
 
 # --- algebraic-guard: walk the Gen tree and refuse anything that is not
-#     integer / rational / identifier / an algebraic operator. ---
+#     integer / rational / identifier / an algebraic operator. The caller
+#     holds the GIAC lock. ---
 function _assert_algebraic(gen)
     t = GenTypes.T(Giac.GiacCxxBindings.type(gen))
     if t in (GenTypes.INT, GenTypes.ZINT, GenTypes.FRAC)
@@ -308,6 +311,16 @@ function _assert_algebraic(gen)
     end
 end
 
+# The GIAC lock is held only to read the GIAC object; the Nemo work that
+# follows runs outside it.
+_gen_type(expr::GiacExpr) = GC.@preserve expr Giac.with_giac_lock() do
+    GenTypes.T(Giac.GiacCxxBindings.type(Giac._ptr_to_gen(expr)))
+end
+
+_check_algebraic(expr::GiacExpr) = GC.@preserve expr Giac.with_giac_lock() do
+    _assert_algebraic(Giac._ptr_to_gen(expr))
+end
+
 # --- integer / rational leaf extraction via Giac.to_julia ---
 function _leaf_to_julia(expr::GiacExpr)
     v = Giac.to_julia(expr)
@@ -319,8 +332,7 @@ end
 
 # --- into ZZ ---
 function Giac.to_nemo(expr::GiacExpr, ::ZZRing)
-    gen = Giac._ptr_to_gen(expr)
-    t = GenTypes.T(Giac.GiacCxxBindings.type(gen))
+    t = _gen_type(expr)
     if t in (GenTypes.DOUBLE, GenTypes.REAL)
         error("to_nemo: real values are refused in v1. Supported: $INWARD_SUPPORTED")
     elseif t == GenTypes.FRAC
@@ -336,8 +348,7 @@ end
 
 # --- into QQ ---
 function Giac.to_nemo(expr::GiacExpr, ::QQField)
-    gen = Giac._ptr_to_gen(expr)
-    t = GenTypes.T(Giac.GiacCxxBindings.type(gen))
+    t = _gen_type(expr)
     if t in (GenTypes.DOUBLE, GenTypes.REAL)
         error("to_nemo: real values are refused in v1. Supported: $INWARD_SUPPORTED")
     end
@@ -354,8 +365,7 @@ end
 
 # --- into a univariate polynomial ring over ZZ or QQ ---
 function Giac.to_nemo(expr::GiacExpr, R::PolyRing)
-    gen = Giac._ptr_to_gen(expr)
-    _assert_algebraic(gen)
+    _check_algebraic(expr)
     B = base_ring(R)
     vars = Giac.Commands.lvar(expr)
     nvars = length(vars)
@@ -374,8 +384,7 @@ end
 
 # --- into an AbsSimpleNumField ---
 function Giac.to_nemo(expr::GiacExpr, K::AbsSimpleNumField)
-    gen = Giac._ptr_to_gen(expr)
-    _assert_algebraic(gen)
+    _check_algebraic(expr)
     vars = Giac.Commands.lvar(expr)
     nvars = length(vars)
     if nvars == 0
@@ -394,8 +403,7 @@ end
 
 # --- into an FqField (prime or non-prime) ---
 function Giac.to_nemo(expr::GiacExpr, F::FqField)
-    gen = Giac._ptr_to_gen(expr)
-    _assert_algebraic(gen)
+    _check_algebraic(expr)
     vars = Giac.Commands.lvar(expr)
     nvars = length(vars)
     if nvars == 0
