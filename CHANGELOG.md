@@ -14,6 +14,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   extension uses only `pari`, `gp_eval`, `Gen` and `PariType`, which 0.19
   keeps. GIAC_jll 2.1.0, built on PARI 2.19, needs LibPARI 0.19 to share an
   environment with LibPARI.
+- **`Rational(g)` of a complex fraction raises `InexactError`**, as
+  `Rational(3//4 + 1//2*im)` does; it raised `ArgumentError` while parsing
+  the Gaussian numerator.
+- **The parts of a GIAC value are taken as stored**, not printed and
+  evaluated again: `numer`, `denom`, `real_part`, `imag_part`,
+  `symb_argument`, `arguments` and vector elements. A part evaluated again
+  is not always the part: `arguments(giac_eval("3_m"))` was `[3, 1_m]` (the
+  unit `_m` evaluates to the quantity `1_m`), which made walking a physical
+  unit recurse without end; it is now `[3, _m]`. Numbers are read as before:
+  a GIAC double is still read from the decimal GIAC prints for it
+  (`to_julia(giac_eval("0.1+0.2"))` is `0.3`). Ported from Kahli Burke's
+  `ergonomics` branch.
 
 - **Giac matrices iterate over their entries, like Julia matrices** (#33).
   For a matrix with Giac's matrix subtype (`matrix[...]`, `idn(n)`):
@@ -246,6 +258,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   did nothing, so every matrix built by `GiacMatrix(::AbstractMatrix)`,
   matrix arithmetic, `inv` or `transpose` kept its GIAC value until the end
   of the session.
+- **Complex fractions convert to Julia.** GIAC stores a complex number with a
+  rational part, such as `(3+2*i)/4` or `1/3+2/5*i`, as a fraction with a
+  Gaussian-integer numerator; `to_julia` raised `ArgumentError` on it (and on
+  any vector holding one). It now returns a `Complex{Rational}`:
+  `to_julia(giac_eval("(3+2*i)/4")) === 3//4 + 1//2*im`. `Complex(g)` and
+  `convert(Complex, g)` accept a fraction, complex or real (a real one raised
+  `MethodError`). Ported from Kahli Burke's `ergonomics` branch.
+- **`evalf` to some digits no longer changes GIAC's `epsilon`.** GIAC's
+  `evalf` of a `rootof` to `n` digits sets `epsilon` to `10⁻ⁿ` for the
+  session, after which numeric integrals (`romberg`, `integrate` with float
+  bounds) return their last two estimates instead of a value.
+  `Giac.Commands.evalf(x, n)` and `invoke_cmd(:evalf, x, n)` now put
+  `epsilon` back, which also covers `to_julia` of a `rootof`, reduced with
+  `evalf(x, 18)`. Ported from Kahli Burke's `ergonomics` branch.
+
 - **`to_giac` no longer overflows the stack on irrational constants**
   ([#89](https://github.com/JuliaGiac/Giac.jl/issues/89)). With Symbolics 7,
   `Num(pi)` unwraps to `identity(π)` around the `Irrational` `π`. SymbolicUtils

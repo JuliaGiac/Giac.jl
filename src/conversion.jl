@@ -35,6 +35,12 @@ numeric value and then recurses, so `to_julia(substitute(sin(x), x => 2))`
 returns a `Float64`, not `GiacExpr: sin(2)`. The layered design — `evalf(...)`
 keeps you in Giac, `to_julia(...)` bridges to Julia — is preserved.
 
+A `DOUBLE` is read from the decimal GIAC prints for it (`Digits`, 12
+significant digits by default): `to_julia(giac_eval("0.1+0.2"))` is `0.3`.
+A complex fraction such as `(3+2*i)/4` — GIAC stores it as a fraction with a
+Gaussian-integer numerator — is a `Complex{Rational{Int64}}`, `3//4 + 1//2*im`.
+See [How numbers are read](@ref) for the details.
+
 Note: GIAC represents booleans as integers internally, but `to_julia` detects them
 via their string representation ("true"/"false") and returns Julia `Bool` values.
 
