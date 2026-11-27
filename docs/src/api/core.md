@@ -51,6 +51,14 @@ isapprox(GiacExpr(π), 355//113; rtol = 1e-6)  # true
 Giac.matrix_properties
 ```
 
+### Assumptions for one block and settings
+
+```@docs
+assuming
+with_settings
+giac_settings
+```
+
 ### Function Syntax for @giac_var
 
 The `@giac_var` macro supports function notation for defining symbolic functions that depend on other variables. This is useful for differential equations and calculus with unknown functions.

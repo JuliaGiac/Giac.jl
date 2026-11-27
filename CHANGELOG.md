@@ -51,6 +51,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `collect_terms(e, vars)` groups `e` by monomials in `vars` with collected,
   normalized coefficients, in graded order; `Giac.coefficients(e, vars)`
   (unexported) gives them as a `Dict`.
+- **`assuming(f, conditions...)` puts GIAC assumptions in force for one
+  block** and undoes them afterwards, after an error too (scoped assumptions
+  as in Kahli Burke's `ergonomics` branch, restored as MathInterchange
+  suggested). Conditions are relations (`k > 0`) or domains (`n => :integer`);
+  they combine and add to what a variable was declared with, and when the
+  block ends each variable gets back the state GIAC held for it, and every
+  setting is put back. A condition already decided true is skipped, one
+  decided false is an error. The GIAC lock is held for the whole block.
+- **`giac_settings()` and `with_settings(f; …)`**: the settings that change
+  results (`complex_mode`, `approx_mode`, `angle_radian`,
+  `complex_variables`, `epsilon`, `digits`) as one record, and set for one
+  block with every setting restored afterwards (MathInterchange's feedback:
+  with `complex_mode` on, `simplify(sqrt(x^2))` is `x`).
 
 - **`@exact` keeps the numbers of symbolic code exact**, ported from Kahli
   Burke's ergonomics branch. A float literal is read from its shortest
