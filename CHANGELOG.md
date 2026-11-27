@@ -396,6 +396,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **The warning about invalid UTF-8 in a command's help text no longer
+  fails**: it read `help_result.name`, while the field is `command`, so the
+  warning itself threw (`FieldError`) instead of reporting the command.
 - **`isapprox` no longer depends on fixed temporary names**: a value bound to
   `giacjl_isapprox_t1` changed its answer. It now uses fresh identifiers,
   purged afterwards.
