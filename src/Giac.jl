@@ -180,7 +180,7 @@ using .Commands: invoke_cmd
 using .Commands: hold_cmd, release
 
 # Conversion functions (extended by GiacSymbolicsExt, GiacMathJSONExt, GiacSymPyExt, and GiacNemoExt)
-export to_giac, to_symbolics, to_mathjson, to_sympy, to_nemo
+export to_giac, to_symbolics, to_mathjson, to_sympy, to_nemo, to_symbolicutils
 
 # MCP server entry point (extended by GiacMCPExt when ModelContextProtocol is loaded)
 export giac_mcp_server
@@ -202,6 +202,14 @@ function to_giac end
 Convert a GiacExpr to a Symbolics.jl expression. Extended by GiacSymbolicsExt.
 """
 function to_symbolics end
+
+"""
+    to_symbolicutils(expr::GiacExpr; symbols = Dict{String, Any}(), exact = true)
+
+Convert a GiacExpr to a SymbolicUtils expression, exactly, with SymbolicUtils alone (no
+Symbolics). Extended by GiacSymbolicUtilsExt; see its method for the details.
+"""
+function to_symbolicutils end
 
 """
     to_mathjson(expr::GiacExpr)

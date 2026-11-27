@@ -21,6 +21,7 @@ Nemo = "2edaba10-b0f1-5616-af89-8c11ac63239a"
 SymPy = "24249f21-da20-56a4-8eb1-6a02cf4ae2e6"
 Symbolics = "0c5d862f-8b57-4792-8d23-62f2024744c7"
 TermInterface = "8ea1fca8-c5ef-4a55-8b96-4e9afe9c9a3c"
+SymbolicUtils = "d1185830-fcd6-423d-90d6-eec64667417b"
 
 [extensions]
 GiacLibPARIExt = "LibPARI"
@@ -30,6 +31,7 @@ GiacNemoExt = "Nemo"
 GiacSymPyExt = "SymPy"
 GiacSymbolicsExt = "Symbolics"
 GiacTermInterfaceExt = "TermInterface"
+GiacSymbolicUtilsExt = "SymbolicUtils"
 
 [compat]
 Aqua = "0.8"
@@ -55,6 +57,7 @@ Test = "1.10"
 julia = "1.10"
 libcxxwrap_julia_jll = "0.14.10"
 libgiac_julia_jll = "0.5.2"
+SymbolicUtils = "4.56"
 
 [extras]
 Aqua = "4c88cf16-eb10-579e-8560-4a9242c79595"
@@ -71,6 +74,7 @@ SymPy = "24249f21-da20-56a4-8eb1-6a02cf4ae2e6"
 Symbolics = "0c5d862f-8b57-4792-8d23-62f2024744c7"
 TermInterface = "8ea1fca8-c5ef-4a55-8b96-4e9afe9c9a3c"
 Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
+SymbolicUtils = "d1185830-fcd6-423d-90d6-eec64667417b"
 
 [targets]
-test = ["Test", "Aqua", "Documenter", "Symbolics", "MathJSON", "ModelContextProtocol", "DataFrames", "CSV", "TermInterface", "Random", "ForwardDiff", "LibPARI", "Nemo"]
+test = ["Test", "Aqua", "Documenter", "Symbolics", "MathJSON", "ModelContextProtocol", "DataFrames", "CSV", "TermInterface", "Random", "ForwardDiff", "LibPARI", "Nemo", "SymbolicUtils"]

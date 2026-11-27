@@ -530,6 +530,7 @@ denominator((x^3 - 1) / (x^2 - 1))   # x+1
 Giac.to_julia
 Giac.to_giac
 Giac.to_symbolics
+Giac.to_symbolicutils
 ```
 
 ### How numbers are read

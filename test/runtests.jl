@@ -156,6 +156,8 @@ using LinearAlgebra
     # Verifies symbolic expression preservation in to_symbolics
     # ============================================================================
     include("test_symbolics_ext.jl")
+    # SymbolicUtils extension: exact conversion with SymbolicUtils alone (MathInterchange)
+    include("test_symbolicutils_ext.jl")
 
     # ============================================================================
     # Constants Module Tests (053-symbolic-pi-constant)

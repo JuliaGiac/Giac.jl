@@ -22,6 +22,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   points, or the value of an assigned variable, with GIAC's record kept in
   `raw` (MathInterchange's feedback, point 6). It holds only what reached
   GIAC; a condition GIAC does not keep, such as `x != 3`, does not appear.
+- **`GiacSymbolicUtilsExt`: exact conversion between Giac and SymbolicUtils,
+  with SymbolicUtils alone** (MathInterchange's feedback, point 5).
+  `to_symbolicutils(g; symbols, exact = true)` keeps numbers exact (`Int` or
+  `BigInt`, `Rational{BigInt}`), radicals and constants unevaluated
+  (`sqrt(2)`, never `1.414…`; `2π` is not folded into a float) and takes the
+  caller's mapping from Giac names to symbols. `to_giac(::BasicSymbolic;
+  names, exact = true)` builds the Giac expression node by node, comparisons
+  and `&`/`|` included. In exact mode a float or an unknown function is an
+  `ArgumentError`.
 
 - **Equations as values**, ported from Kahli Burke's `ergonomics` branch
   (step 4b of the port). `lhs(eq)` and `rhs(eq)` give the sides of `a ~ b`;
