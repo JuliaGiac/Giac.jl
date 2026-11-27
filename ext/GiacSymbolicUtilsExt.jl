@@ -16,6 +16,9 @@ const SU = SymbolicUtils
 # functions SymbolicUtils builds as terms on symbolic arguments.
 const _ELEMENTARY = Set{Any}([sqrt, abs, sign, exp, log, sin, cos, tan, asin, acos, atan,
                               sinh, cosh, tanh, asinh, acosh, atanh, floor, ceil])
+# Julia functions Giac names otherwise, and the other way round: `log` is Giac's `ln`
+const _GIAC_NAME = Dict{Any, String}(log => "ln")
+const _JULIA_FUNCTION = Dict{String, Any}(name => f for (f, name) in _GIAC_NAME)
 const _ARITHMETIC = Set{Any}([(+), (-), (*), (/), (^), inv])
 const _RELATIONS = Set{Any}([(<), (<=), (>), (>=), (==), (!=), (&), (|), (!)])
 
@@ -70,7 +73,9 @@ _simplest(x) = x
 
 function _from(g::GiacExpr, symbols, exact::Bool, strict::Bool = false)
     Giac.iscall(g) || return _from_leaf(g, symbols, exact, strict)
-    op = Giac.operation(g)
+    op = get(_JULIA_FUNCTION, Giac.symb_funcname(g)) do
+        Giac.operation(g)
+    end
     args = [_from(a, symbols, exact, strict) for a in Giac.arguments(g)]
     if !(op isa Function)
         exact && _inexact("the Giac function $(Giac.symb_funcname(g))")
@@ -159,7 +164,6 @@ end
 # SymbolicUtils → Giac source text, unevaluated
 # ---------------------------------------------------------------------------------------------
 
-const _GIAC_NAME = Dict{Any, String}(log => "ln")
 const _RELATION_TEXT = Dict{Any, String}((<) => "<", (<=) => "<=", (>) => ">", (>=) => ">=",
                                          (==) => "==", (!=) => "!=")
 const _CONNECTIVE_TEXT = Dict{Any, String}((&) => " and ", (|) => " or ")

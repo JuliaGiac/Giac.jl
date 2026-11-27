@@ -20,6 +20,22 @@ const SU = SymbolicUtils
         @test isequal(su(C.integrate(3 * v^2 / 4 - v + 5, v)), (1 // 4) * x^3 - (1 // 2) * x^2 + 5x)
     end
 
+    @testset "Giac's function names" begin
+        # Giac writes the natural logarithm ln (MathInterchange's report on integrate(1/v, v))
+        @test isequal(su(C.integrate(1 / v, v)), log(abs(x)))
+        @test isequal(to_symbolicutils(giac_eval("ln(v)"); symbols = names, strict_symbols = true), log(x))
+        @test isequal(su(giac_eval("ln(2)")), SU.term(log, 2))           # not 0.693…
+        # an elementary function comes back as itself, or as the form Giac evaluates it to
+        g(f) = su(giac_eval(Giac.giac_source(f(x); names = Dict(x => "v"))))
+        for f in (sqrt, abs, sign, exp, log, sin, cos, tan, asin, acos, atan, sinh, cosh, tanh, floor)
+            @test isequal(g(f), f(x))
+        end
+        @test isequal(g(asinh), log(sqrt(1 + x^2) + x))
+        @test isequal(g(acosh), log(sqrt(-1 + x^2) + x))
+        @test isequal(g(atanh), (1 // 2) * log((1 + x) / (1 - x)))
+        @test isequal(g(ceil), -floor(-x))
+    end
+
     @testset "simplify under premises" begin
         @test isequal(su(assuming(() -> C.simplify(sqrt(v^2)), v > 0)), x)
         @test isequal(su(C.simplify(sqrt(v^2))), abs(x))
