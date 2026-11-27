@@ -159,3 +159,24 @@ HeldCmd
 Giac.Commands.hold_cmd
 Giac.Commands.release
 ```
+
+## Unevaluated input
+
+`giac_eval` parses *and evaluates*, and evaluation already rewrites some
+expressions: `giac_eval("sqrt(x^2)")` is `abs(x)` before any `simplify`, and
+`x` under `assume(x > 0)`. So the result of `simplify(giac_eval(s))` mixes what
+evaluation did with what `simplify` did. To tell the steps apart, hold the
+input with GIAC's `quote`, then apply each step explicitly:
+
+```julia
+@giac_var x
+received  = giac_eval("quote(sqrt(x^2))")   # sqrt(x^2): the input as written
+evaluated = invoke_cmd(:eval, received)     # abs(x): what evaluation alone does
+result    = invoke_cmd(:simplify, received) # evaluation, then simplify
+```
+
+Any command evaluates its arguments first, so `received` keeps the input only
+until it is given to a command. `hold_cmd` holds a command and its arguments in
+Julia, but its arguments are evaluated when the `HeldCmd` is built; pass a
+quoted input to keep one unevaluated.
+

@@ -17,6 +17,7 @@ _pages = [
     "Creating Julia Functions" => "julia_functions.md",
     "Using Giac.jl with reactive notebooks" => "notebooks.md",
     "Using icas (Giac C++ REPL)" => "icas.md",
+    "Threads and global state" => "threads.md",
     "Mathematics" => [
         "Algebra" => "mathematics/algebra.md",
         "Calculus" => "mathematics/calculus.md",

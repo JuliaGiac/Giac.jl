@@ -236,7 +236,7 @@ function init_giac_library()
     # Check if CxxWrap bindings were loaded at compile time
     if GiacCxxBindings._have_library
         _initialized[] = true
-        @info "GIAC wrapper library loaded from $lib_path"
+        @debug "GIAC wrapper library loaded from $lib_path"
 
         # Initialize xcasroot for help file support
         _init_xcasroot(lib_path)

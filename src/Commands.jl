@@ -292,6 +292,27 @@ end
 export hold_cmd, release
 
 # ============================================================================
+# purge (MathInterchange's feedback, point 7)
+# ============================================================================
+
+"""
+    purge(x::GiacExpr) -> GiacExpr
+
+Remove the value or the assumptions of the variable `x` (GIAC's `purge`) and return what it
+held: its value, its assumption record (as `about` gives it), or `x` itself when it held
+nothing. GIAC answers the last case with the string "No such variable x"; it is normalized to
+`x`, as `about(x)` is `x` for a free variable. Several variables, or any other argument, go to
+GIAC's `purge` unchanged.
+"""
+function purge(x::GiacExpr)
+    G = parentmodule(@__MODULE__)
+    r = invoke_cmd(:purge, x)
+    return G.is_string(r) && startswith(G.to_julia(r), "No such variable") ? x : r
+end
+purge(args...) = invoke_cmd(:purge, args...)
+export purge
+
+# ============================================================================
 # Docstring Generation (026-julia-help-docstrings)
 # ============================================================================
 

@@ -9,6 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **`giac_version()`** returns the version of the GIAC library as a
+  `VersionNumber`, read from GIAC's `version()` banner (MathInterchange's
+  feedback, point 7).
+- **Documentation**: a "Threads and global state" page stating what
+  concurrent use guarantees and what is shared (point 8), and a section on
+  passing an input unevaluated with `quote` and applying each step
+  explicitly (point 3).
+
 - **Equations as values**, ported from Kahli Burke's `ergonomics` branch
   (step 4b of the port). `lhs(eq)` and `rhs(eq)` give the sides of `a ~ b`;
   arithmetic with an equation applies to both sides (`(2x + 3 ~ y) - 3` is
@@ -80,6 +88,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   fractions. See "Exact Numbers" in the Core API page.
 
 ### Changed
+
+- **`Giac.Commands.purge(x)` returns what `x` held**: its value, its
+  assumption record, or `x` itself when it held nothing, instead of GIAC's
+  string "No such variable x" (point 7).
+- **Loading Giac logs the wrapper library's path at `Debug` level**, not
+  `Info`, so it no longer appears in doctests (point 9).
 
 - **`a ~ b` is built by GIAC's `equal`** instead of printing both sides and
   parsing `"a=b"`, so a float keeps all its digits
