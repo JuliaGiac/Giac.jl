@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **`GiacBlockArraysExt`: block matrices of expressions with BlockArrays.jl**,
+  ported from Kahli Burke's `ergonomics` branch. Products of conforming block
+  matrices of `GiacExpr` work and stay partitioned (the extension gives
+  ArrayLayouts the lazy zeros it builds only for `Number` types). The
+  partition lines in LaTeX will come with the typesetting.
+
 - **Fresh identifiers** (MathInterchange's feedback, point 4):
   `is_free_identifier(name)` checks that no value, assumption, GIAC command,
   reserved constant (`i`, `e`, `pi`, `D`, …) or physical unit (`_name`)
