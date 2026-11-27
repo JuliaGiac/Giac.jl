@@ -254,6 +254,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **`giac_type` and `subtype` read the stored value** instead of printing
+  the expression and evaluating the printed form again (ported from Kahli
+  Burke's `ergonomics` branch). The printed form is not always the value: the
+  name of a physical unit taken apart from `3_m`, `_m`, is an identifier, but
+  `"_m"` evaluates to the quantity `1_m`, so `giac_type` said `SYMB` and
+  `is_identifier` was false. Type queries are also faster.
 - **GIAC objects are freed only under the GIAC lock** (ported from Kahli
   Burke's `ergonomics` branch). Julia runs finalizers on whichever thread
   collects garbage, possibly while another thread is inside GIAC, whose
