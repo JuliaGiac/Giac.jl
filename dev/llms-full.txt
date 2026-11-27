@@ -6098,6 +6098,7 @@ to_giac((0 < x) & (x <= 10); names = Dict(x => "v"))       # (v>0) and (10>=v)
 | `exp(1)` | the term `exp(1)` |
 | `i` | `im` |
 | `abs`, `exp`, `log`, `sin`, …, `atan`, `sinh`, … | terms on symbolic arguments |
+| `ln` | `log` (`ln(abs(v))` is `log(abs(x))`) |
 
 `symbols` maps Giac names to the SymbolicUtils symbols to use (for instance
 your own fresh names). A name not in it becomes a `Real` symbol of the same
@@ -6106,6 +6107,10 @@ caller to whom an identifier outside its request means something unexpected
 came back. With `exact = true`, the default, a GIAC float or a function outside the
 elementary ones (such as `Gamma`) is an `ArgumentError`; `exact = false`
 accepts them.
+
+GIAC evaluates some elementary functions into others before they come back:
+`asinh(v)` is `ln(v+sqrt(v^2+1))`, `ceil(v)` is `-floor(-v)`; the conversion
+returns that form, exactly.
 
 ## To Giac
 
