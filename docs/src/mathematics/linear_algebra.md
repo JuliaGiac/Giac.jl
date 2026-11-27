@@ -211,6 +211,27 @@ using Giac.Commands: eigenvalues
 eigenvalues(Matrix(σθ))          # same as eigenvalues(σθ)
 ```
 
+### Matrix equations
+
+`A ~ B` between arrays of the same shape is the array of equations between their
+entries. The right side may also be `I`, `-I`, a symbolic multiple `s*I`, or one
+value for every entry. `solve(eqs, X)` solves for the free entries of a matrix
+unknown and returns `X` with its entries replaced; repeated equations, from a
+symmetric unknown say, count once.
+
+```julia
+using Giac.Commands: solve
+@giac_var a11 a12 a21 a22 p11 p12 p22
+A = [a11 a12; a21 a22]
+P = [p11 p12; p12 p22]           # a symmetric unknown
+
+A ~ I                            # [a11=1 a12=0; a21=0 a22=1]
+P★ = solve(P*A + A'*P ~ -I, P)   # the Lyapunov equation, solved for P
+```
+
+`solve` throws an `ArgumentError` if the equations have no solution, or more
+than one.
+
 ### Gradient, Jacobian and Hessian
 
 ```julia

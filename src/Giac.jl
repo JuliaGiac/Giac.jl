@@ -98,6 +98,8 @@ include("Commands.jl")
 
 # Symbolic linear algebra on Julia arrays of GiacExpr (ported from the ergonomics branch)
 include("array_algebra.jl")
+# Equations as values: lhs, rhs, isolate, arithmetic on both sides
+include("equations.jl")
 
 
 # Include Constants submodule (053-symbolic-pi-constant)
@@ -120,6 +122,7 @@ export giac_eval, to_julia, list_commands, help_count
 # Macros (011-giac-symbol-macro, 012-giac-several-var)
 export @giac_var, @giac_several_vars
 export ∇, jacobian, hessian
+export lhs, rhs, isolate
 export @exact
 
 # Command invocation (009-commands-submodule)

@@ -74,11 +74,22 @@ julia> substitute(x + 2*y, x => y, y => x)
 GiacExpr: y+2*x
 ```
 
+An equation `a ~ b`, or a vector of them (such as the result of [`isolate`](@ref)), substitutes
+`b` for `a`, and may be mixed with pairs: `substitute(x*y + a, y ~ 2x, a => 1)`.
+
 # See also
 - [`substitute(::GiacExpr, ::AbstractDict)`](@ref): Dict-based form
 """
-substitute(expr::GiacExpr, pairs::Pair{<:GiacExpr}...)::GiacExpr =
-    isempty(pairs) ? expr : substitute(expr, Dict(pairs))
+function substitute(expr::GiacExpr, rules::Union{Pair{<:GiacExpr}, GiacExpr, AbstractVector{GiacExpr}}...)::GiacExpr
+    isempty(rules) && return expr
+    all(r -> r isa Pair, rules) && return substitute(expr, Dict(rules))
+    return substitute(expr, Dict{GiacExpr, Any}(p for r in rules for p in _substitution_pairs(r)))
+end
+
+# an equation `y ~ 2x` puts its right side in place of its left side
+_substitution_pairs(p::Pair) = (p,)
+_substitution_pairs(eq::GiacExpr) = (lhs(eq) => rhs(eq),)
+_substitution_pairs(eqs::AbstractVector{GiacExpr}) = map(eq -> lhs(eq) => rhs(eq), eqs)
 
 # ============================================================================
 # GiacMatrix Support: Element-wise Substitution

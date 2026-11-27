@@ -11,13 +11,14 @@
 Add two GIAC expressions.
 """
 function Base.:+(a::GiacExpr, b::GiacExpr)::GiacExpr
-    with_giac_lock() do
+    r = with_giac_lock() do
         ptr = GC.@preserve a b _giac_add(a.ptr, b.ptr)
         if ptr == C_NULL
             throw(GiacError("Addition failed", :eval))
         end
         return GiacExpr(ptr)
     end
+    return _both_sides(+, a, b, r)
 end
 
 """
@@ -26,13 +27,14 @@ end
 Subtract two GIAC expressions.
 """
 function Base.:-(a::GiacExpr, b::GiacExpr)::GiacExpr
-    with_giac_lock() do
+    r = with_giac_lock() do
         ptr = GC.@preserve a b _giac_sub(a.ptr, b.ptr)
         if ptr == C_NULL
             throw(GiacError("Subtraction failed", :eval))
         end
         return GiacExpr(ptr)
     end
+    return _both_sides(-, a, b, r)
 end
 
 """
@@ -41,13 +43,14 @@ end
 Negate a GIAC expression.
 """
 function Base.:-(a::GiacExpr)::GiacExpr
-    with_giac_lock() do
+    r = with_giac_lock() do
         ptr = GC.@preserve a _giac_neg(a.ptr)
         if ptr == C_NULL
             throw(GiacError("Negation failed", :eval))
         end
         return GiacExpr(ptr)
     end
+    return _both_sides(-, a, r)
 end
 
 """
@@ -56,13 +59,14 @@ end
 Multiply two GIAC expressions.
 """
 function Base.:*(a::GiacExpr, b::GiacExpr)::GiacExpr
-    with_giac_lock() do
+    r = with_giac_lock() do
         ptr = GC.@preserve a b _giac_mul(a.ptr, b.ptr)
         if ptr == C_NULL
             throw(GiacError("Multiplication failed", :eval))
         end
         return GiacExpr(ptr)
     end
+    return _both_sides(*, a, b, r)
 end
 
 """
@@ -71,13 +75,14 @@ end
 Divide two GIAC expressions.
 """
 function Base.:/(a::GiacExpr, b::GiacExpr)::GiacExpr
-    with_giac_lock() do
+    r = with_giac_lock() do
         ptr = GC.@preserve a b _giac_div(a.ptr, b.ptr)
         if ptr == C_NULL
             throw(GiacError("Division failed", :eval))
         end
         return GiacExpr(ptr)
     end
+    return _both_sides(/, a, b, r)
 end
 
 """
@@ -86,13 +91,14 @@ end
 Raise a GIAC expression to a power.
 """
 function Base.:^(a::GiacExpr, b::GiacExpr)::GiacExpr
-    with_giac_lock() do
+    r = with_giac_lock() do
         ptr = GC.@preserve a b _giac_pow(a.ptr, b.ptr)
         if ptr == C_NULL
             throw(GiacError("Exponentiation failed", :eval))
         end
         return GiacExpr(ptr)
     end
+    return _both_sides(^, a, b, r)
 end
 
 """
@@ -423,10 +429,9 @@ eq = x + y ~ giac_eval("10")   # Creates equation x+y=10
 - [`==`](@ref): Boolean equality check (returns `Bool`)
 - [`solve`](@ref): Solve equations
 """
-function Base.:~(a::GiacExpr, b::GiacExpr)::GiacExpr
-    eq_str = "$(string(a))=$(string(b))"
-    return giac_eval(eq_str)
-end
+# Built by GIAC's `equal`, so the sides are not printed and parsed again (a float keeps its
+# digits). Ported from Kahli Burke's `ergonomics` branch.
+Base.:~(a::GiacExpr, b::GiacExpr)::GiacExpr = invoke_cmd(:equal, a, b)
 
 """
     ~(a::GiacExpr, b::Number) -> GiacExpr

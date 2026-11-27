@@ -9,6 +9,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Equations as values**, ported from Kahli Burke's `ergonomics` branch
+  (step 4b of the port). `lhs(eq)` and `rhs(eq)` give the sides of `a ~ b`;
+  arithmetic with an equation applies to both sides (`(2x + 3 ~ y) - 3` is
+  `2x ~ y - 3`, `eq + (a ~ b)` adds side by side); `isolate(eq, x)` solves
+  for `x` and gives `x ~ …`, a vector of equations when there are several
+  solutions; `substitute` takes equations as rules (`substitute(e, y ~ 2x)`,
+  a vector of them, or mixed with pairs). Between arrays, `A ~ B` is the
+  array of equations between entries, with `I`, `s*I` or one value as the
+  right side; `solve(eqs, X)` solves for the free entries of a matrix
+  unknown, such as `P` in the Lyapunov equation `P*A + A'*P ~ -I`. New
+  exported functions: `lhs`, `rhs`, `isolate`.
+
 - **`GiacMatrix` is an `AbstractMatrix{GiacExpr}`, and Julia arrays of
   expressions get symbolic linear algebra**, ported from Kahli Burke's
   `ergonomics` branch (step 4a of the port). Slicing (`M[:, 1]`), `A'`,
@@ -39,6 +51,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   fractions. See "Exact Numbers" in the Core API page.
 
 ### Changed
+
+- **`a ~ b` is built by GIAC's `equal`** instead of printing both sides and
+  parsing `"a=b"`, so a float keeps all its digits
+  (`x ~ 0.123456789012345`).
 
 - **A Julia `Bool` converts to the integer 1 or 0**, as in Julia arithmetic
   (`Bool <: Integer`), instead of GIAC's logical constant: `x + true` is

@@ -356,6 +356,16 @@ jacobian
 hessian
 ```
 
+## Equations
+
+```@docs
+lhs
+rhs
+isolate
+Base.:~(::AbstractArray{GiacExpr}, ::AbstractArray)
+Giac.Commands.solve(::AbstractArray{GiacExpr}, ::AbstractMatrix{GiacExpr})
+```
+
 ## Command Discovery
 
 ```@docs
