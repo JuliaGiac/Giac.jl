@@ -77,10 +77,13 @@
         public_exports = filter(s -> !startswith(string(s), "_"), giac_exports)
         # Core API + utilities + output handling (029) + the symbolic-algebra helpers of the
         # ergonomics port (∇, jacobian, hessian, lhs, rhs, isolate, @giac_matrix, taylor,
-        # collect_terms, assuming, with_settings, giac_settings) should be under 90 symbols
-        # (not thousands), as on Kahli Burke's `ergonomics` branch
+        # collect_terms, assuming, with_settings, giac_settings, assumptions) + the engine
+        # queries (giac_version, fresh_identifier, with_fresh_identifiers, is_free_identifier,
+        # to_symbolicutils, evaluate_with_diagnostics) should be under 100 symbols (not
+        # thousands). 100 leaves room for the symbolic matrices of the port (@matsym, MatExpr,
+        # quadratic_form, differential, derivative, vectorize, vech).
         # Output handling adds: 13 type constants + 10 predicates + 6 accessors = ~29 exports
-        @test length(public_exports) <= 90
+        @test length(public_exports) <= 100
     end
 
     @testset "Exportable Commands Generation" begin
