@@ -425,6 +425,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **`to_symbolicutils` maps Giac's `ln` to `log`**: `integrate(1/v, v)`,
+  `ln(abs(v))`, came back as an `ArgumentError` in exact mode ("no exact
+  SymbolicUtils form for the function ln") instead of `log(abs(x))`;
+  `giac_source` already wrote `log` as `ln` (reported by MathInterchange).
 - **The warning about invalid UTF-8 in a command's help text no longer
   fails**: it read `help_result.name`, while the field is `command`, so the
   warning itself threw (`FieldError`) instead of reporting the command.
