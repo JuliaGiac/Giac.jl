@@ -32,84 +32,94 @@ const SERRET_HINT = "0.272198261288"
         @test DiagnosticLevel.INFO isa DiagnosticLevel.T
     end
 
-    if Giac._log_capture_available()
-        @giac_var x
+    # Both ways of capturing are tested: the wrapper's (libgiac_julia_jll 0.6 and later) and the
+    # fallback that redirects stderr, used with an older wrapper.
+    backends = Giac._log_capture_available() ? (:wrapper, :stderr) : (:stderr,)
+    for backend in backends
+        Giac._DIAGNOSTICS_BACKEND[] = backend
+        @testset "captured by $backend" begin
+            @test Giac._diagnostics_backend() === backend
+            @giac_var x
 
-        @testset "integrate keeps its value, message goes to diagnostics" begin
-            out = evaluate_with_diagnostics() do
-                Giac.Commands.integrate(log(1 + x) / (1 + x^2), x, 0, 1)
+            @testset "integrate keeps its value, message goes to diagnostics" begin
+                out = evaluate_with_diagnostics() do
+                    Giac.Commands.integrate(log(1 + x) / (1 + x^2), x, 0, 1)
+                end
+                @test out isa GiacEvalResult
+                @test out.value isa GiacExpr
+                @test occursin("integrate", string(out.value))
+                @test length(out.diagnostics) == 1
+                d = out.diagnostics[1]
+                @test d.level == DiagnosticLevel.INFO
+                @test startswith(d.text, "∫ ~=")
+                @test occursin(SERRET_HINT, d.text)
+                @test startswith(d.raw, "//")
+                @test occursin(SERRET_HINT, out.log)
             end
-            @test out isa GiacEvalResult
-            @test out.value isa GiacExpr
-            @test occursin("integrate", string(out.value))
-            @test length(out.diagnostics) == 1
-            d = out.diagnostics[1]
-            @test d.level == DiagnosticLevel.INFO
-            @test startswith(d.text, "∫ ~=")
-            @test occursin(SERRET_HINT, d.text)
-            @test startswith(d.raw, "//")
-            @test occursin(SERRET_HINT, out.log)
-        end
 
-        @testset "value is identical to the uncaptured call" begin
-            plain = Giac.Commands.integrate(log(1 + x) / (1 + x^2), x, 0, 1)
-            out = evaluate_with_diagnostics() do
-                Giac.Commands.integrate(log(1 + x) / (1 + x^2), x, 0, 1)
+            @testset "value is identical to the uncaptured call" begin
+                plain = Giac.Commands.integrate(log(1 + x) / (1 + x^2), x, 0, 1)
+                out = evaluate_with_diagnostics() do
+                    Giac.Commands.integrate(log(1 + x) / (1 + x^2), x, 0, 1)
+                end
+                @test string(out.value) == string(plain)
             end
-            @test string(out.value) == string(plain)
-        end
 
-        @testset "string evaluation path" begin
-            out = evaluate_with_diagnostics(() -> giac_eval(SERRET_STR))
-            @test occursin(SERRET_HINT, out.log)
-        end
-
-        @testset "no message, no diagnostics" begin
-            out = evaluate_with_diagnostics(() -> giac_eval("1+1"))
-            @test string(out.value) == "2"
-            @test isempty(out.diagnostics)
-            @test out.log == ""
-        end
-
-        @testset "any return value is passed through" begin
-            out = evaluate_with_diagnostics(() -> (giac_eval(SERRET_STR), 42))
-            @test out.value[2] == 42
-            @test occursin(SERRET_HINT, out.log)
-        end
-
-        @testset "nested captures both see the message" begin
-            inner = Ref{Any}()
-            outer = evaluate_with_diagnostics() do
-                inner[] = evaluate_with_diagnostics(() -> giac_eval(SERRET_STR))
-                nothing
+            @testset "string evaluation path" begin
+                out = evaluate_with_diagnostics(() -> giac_eval(SERRET_STR))
+                @test occursin(SERRET_HINT, out.log)
             end
-            @test occursin(SERRET_HINT, inner[].log)
-            @test occursin(SERRET_HINT, outer.log)
-        end
 
-        @testset "the stream is restored when f throws" begin
-            @test_throws ErrorException evaluate_with_diagnostics() do
-                giac_eval(SERRET_STR)
-                error("boom")
+            @testset "no message, no diagnostics" begin
+                out = evaluate_with_diagnostics(() -> giac_eval("1+1"))
+                @test string(out.value) == "2"
+                @test isempty(out.diagnostics)
+                @test out.log == ""
             end
-            @test Giac.GiacCxxBindings.log_capture_depth() == 0
-            # Nothing from the failed capture leaks into the next one.
-            @test evaluate_with_diagnostics(() -> giac_eval("1+1")).log == ""
-        end
 
-        @testset "a dedicated GiacContext" begin
-            ctx = GiacContext()
-            out = evaluate_with_diagnostics(context = ctx) do
-                giac_eval(SERRET_STR, ctx)
+            @testset "any return value is passed through" begin
+                out = evaluate_with_diagnostics(() -> (giac_eval(SERRET_STR), 42))
+                @test out.value[2] == 42
+                @test occursin(SERRET_HINT, out.log)
             end
-            @test occursin("integrate", string(out.value))
-            @test occursin(SERRET_HINT, out.log)
-            @test Giac.GiacCxxBindings.log_capture_depth(Giac._get_context(ctx.ptr)) == 0
-            @test Giac.GiacCxxBindings.log_capture_depth() == 0
+
+            @testset "nested captures both see the message" begin
+                inner = Ref{Any}()
+                outer = evaluate_with_diagnostics() do
+                    inner[] = evaluate_with_diagnostics(() -> giac_eval(SERRET_STR))
+                    nothing
+                end
+                @test occursin(SERRET_HINT, inner[].log)
+                @test occursin(SERRET_HINT, outer.log)
+            end
+
+            @testset "the stream is restored when f throws" begin
+                @test_throws ErrorException evaluate_with_diagnostics() do
+                    giac_eval(SERRET_STR)
+                    error("boom")
+                end
+                backend === :wrapper && @test Giac.GiacCxxBindings.log_capture_depth() == 0
+                # Nothing from the failed capture leaks into the next one.
+                @test evaluate_with_diagnostics(() -> giac_eval("1+1")).log == ""
+            end
+
+            @testset "a dedicated GiacContext" begin
+                ctx = GiacContext()
+                out = evaluate_with_diagnostics(context = ctx) do
+                    giac_eval(SERRET_STR, ctx)
+                end
+                @test occursin("integrate", string(out.value))
+                @test occursin(SERRET_HINT, out.log)
+                if backend === :wrapper
+                    @test Giac.GiacCxxBindings.log_capture_depth(Giac._get_context(ctx.ptr)) == 0
+                    @test Giac.GiacCxxBindings.log_capture_depth() == 0
+                end
+            end
         end
-    else
-        @testset "unavailable with an older wrapper" begin
-            @test_throws GiacError evaluate_with_diagnostics(() -> 1)
-        end
+    end
+    Giac._DIAGNOSTICS_BACKEND[] = :auto
+
+    @testset "the backend follows the wrapper" begin
+        @test Giac._diagnostics_backend() === (Giac._log_capture_available() ? :wrapper : :stderr)
     end
 end

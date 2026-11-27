@@ -144,16 +144,28 @@ out.diagnostics[1].text    # "∫ ~= 0.272198261288"
   `evaluate_with_diagnostics(() -> try g() catch e; e end)`.
 - Messages GIAC writes straight to stderr/stdout, bypassing its log stream,
   are not captured.
-- Requires `libgiac_julia_jll` 0.6 or later; with an older wrapper this
-  throws a `GiacError`.
+- With `libgiac_julia_jll` 0.6 or later, the wrapper captures GIAC's log
+  stream on the C++ context. With an older wrapper, stderr is redirected
+  instead, where GIAC's log stream writes by default: then anything written
+  to stderr while `f` runs is captured too (a Julia warning, for instance),
+  and the `context` keyword has no effect of its own.
 """
 function evaluate_with_diagnostics(f; context::GiacContext = DEFAULT_CONTEXT[])
-    if !_log_capture_available()
-        throw(GiacError("evaluate_with_diagnostics requires a GIAC wrapper " *
-                        "with log capture (libgiac_julia_jll 0.6 or later); " *
-                        "the loaded wrapper is " *
-                        "$(GiacCxxBindings.wrapper_version())", :eval))
-    end
+    return _diagnostics_backend() === :wrapper ? _capture_with_wrapper(f, context) :
+                                                 _capture_with_stderr(f)
+end
+
+# How messages are captured: by the wrapper on the C++ context (libgiac_julia_jll 0.6 and
+# later), or by redirecting stderr, where GIAC's log stream writes by default. `:auto` picks the
+# wrapper when it has the capture; the tests set the backend to check both.
+const _DIAGNOSTICS_BACKEND = Ref{Symbol}(:auto)
+function _diagnostics_backend()::Symbol
+    b = _DIAGNOSTICS_BACKEND[]
+    b === :auto && return _log_capture_available() ? :wrapper : :stderr
+    return b
+end
+
+function _capture_with_wrapper(f, context::GiacContext)
     ctx = _get_context(context.ptr)
     return with_giac_lock() do
         tid = Threads.threadid()
@@ -176,5 +188,48 @@ function evaluate_with_diagnostics(f; context::GiacContext = DEFAULT_CONTEXT[])
             log = shared_log * ctx_log
         end
         GiacEvalResult(value, _parse_diagnostics(log), log)
+    end
+end
+
+# The stderr fallback. The outermost capture redirects stderr (the process's file descriptor
+# 2, so what GIAC's C++ code writes is caught) to a temporary file; a nested capture records
+# the file's size when it starts and reads what was written after, so the outer capture sees
+# the inner one's messages too, as with the wrapper. The file is read by its path: the stream
+# stderr writes through and the one that created the file share its offset, which is not
+# moved. Everything is done under the GIAC lock, held while `f` runs, so the redirection
+# belongs to this task.
+const _STDERR_CAPTURE = Ref{Union{Nothing, String}}(nothing)
+
+function _captured_since(path::String, start::Integer)
+    Base.Libc.flush_cstdio()
+    flush(stderr)
+    bytes = read(path)
+    return String(bytes[(start + 1):end])
+end
+
+function _capture_with_stderr(f)
+    return with_giac_lock() do
+        path = _STDERR_CAPTURE[]
+        if path !== nothing                     # nested: what is written after this point
+            Base.Libc.flush_cstdio()
+            flush(stderr)
+            start = filesize(path)
+            value = f()
+            log = _captured_since(path, start)
+            return GiacEvalResult(value, _parse_diagnostics(log), log)
+        end
+        mktemp() do file_path, file
+            _STDERR_CAPTURE[] = file_path
+            try
+                value = redirect_stderr(file) do
+                    f()
+                end
+                flush(file)                     # what Julia itself wrote to stderr
+                log = _captured_since(file_path, 0)
+                GiacEvalResult(value, _parse_diagnostics(log), log)
+            finally
+                _STDERR_CAPTURE[] = nothing
+            end
+        end
     end
 end

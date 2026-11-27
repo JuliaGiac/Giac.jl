@@ -95,5 +95,10 @@ end
   closed where it was opened. A warning is issued and that log is lost.
 - **Direct writes.** Messages that GIAC writes straight to stderr or stdout,
   bypassing its log stream, are not captured.
-- **Wrapper version.** The capture needs `libgiac_julia_jll` 0.6 or later.
-  With an older wrapper, `evaluate_with_diagnostics` throws a `GiacError`.
+- **Wrapper version.** With `libgiac_julia_jll` 0.6 or later, the wrapper
+  captures GIAC's log stream on the C++ context. With an older wrapper, stderr
+  is redirected to a temporary file instead, which catches GIAC's log stream
+  as long as it writes to stderr, its default. Then anything else written to
+  stderr while the function runs (a Julia warning, for instance) is captured
+  too, and the `context` keyword adds nothing, as every context writes to the
+  same stderr.
