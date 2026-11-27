@@ -77,6 +77,24 @@ const SU = SymbolicUtils
         @test !occursin("1.41", string(G(SU.term(sqrt, 2) * x)))
         @test_throws ArgumentError to_giac(0.5 * x; names = back)
         @test string(to_giac(0.5 * x; names = back, exact = false)) == "0.5*v"
+        # giac_source: the unevaluated Giac text, to record what Giac receives
+        src(t) = Giac.giac_source(t; names = back)
+        @test src(x > 0) == "(0<v)"
+        @test src((x < 0) | (x > 10)) == "((v<0) or (10<v))"
+        @test src((0 < x) & (x <= 10)) == "((0<v) and (v<=10))"
+        @test src(!(x > 0)) == "(not((0<v)))"
+        @test src((1 // 3) * x) == "((1/3)*v)"
+        @test src(x^2 + 2) in ("(2+(v^2))", "((v^2)+2)")
+        @test src(sqrt(x^2)) == "sqrt((v^2))"                  # not evaluated: no abs here
+        @test src(SU.term(sqrt, 2) * x) in ("(sqrt(2)*v)", "(v*sqrt(2))")
+        @test src(-x) == "(-v)" || src(-x) == "((-1)*v)"
+        @test_throws ArgumentError src(0.5 * x)
+        @test_throws ArgumentError Giac.giac_source(SU.term(cbrt, x); names = back)
+        @test Giac.giac_source(0.5 * x; names = back, exact = false) == "(0.5*v)"
+        # what Giac makes of the text is what to_giac builds
+        for t in (x^2 + 2x, (1 // 3) * x^3 + SU.term(sqrt, 2) * x, sqrt(x^2), (0 < x) & (x <= 10))
+            @test string(giac_eval(src(t))) == string(G(t))
+        end
         # a round trip keeps exactness
         e = (1 // 3) * x^3 + SU.term(sqrt, 2) * x
         @test isequal(to_symbolicutils(to_giac(e; names = back); symbols = names), e)

@@ -155,4 +155,78 @@ function Giac.to_giac(t::SU.BasicSymbolic; names::AbstractDict = Dict(), exact::
     return _to(t, names, exact)
 end
 
+# ---------------------------------------------------------------------------------------------
+# SymbolicUtils → Giac source text, unevaluated
+# ---------------------------------------------------------------------------------------------
+
+const _GIAC_NAME = Dict{Any, String}(log => "ln")
+const _RELATION_TEXT = Dict{Any, String}((<) => "<", (<=) => "<=", (>) => ">", (>=) => ">=",
+                                         (==) => "==", (!=) => "!=")
+const _CONNECTIVE_TEXT = Dict{Any, String}((&) => " and ", (|) => " or ")
+
+function _number_source(c, exact::Bool)
+    if c isa Integer
+        return c < 0 ? "($c)" : string(c)
+    elseif c isa Rational
+        n, d = numerator(c), denominator(c)
+        isone(d) && return _number_source(n, exact)
+        return "($n/$d)"
+    elseif c isa Complex
+        return "(" * _number_source(real(c), exact) * "+" * _number_source(imag(c), exact) * "*i)"
+    elseif c === π
+        return "pi"
+    elseif c === ℯ
+        return "exp(1)"
+    end
+    exact && _inexact_giac(c)
+    return string(c)
+end
+
+function _source(t, names, exact::Bool)
+    t isa Number && return _number_source(t, exact)
+    SU.isconst(t) && return _number_source(SU.unwrap_const(t), exact)
+    SU.issym(t) && return get(names, t, string(nameof(t)))
+    SU.iscall(t) || throw(ArgumentError("cannot write $(repr(t)) as Giac source"))
+    op = SU.operation(t)
+    args = [_source(a, names, exact) for a in SU.arguments(t)]
+    n = length(args)
+    op === identity && n == 1 && return only(args)
+    if op === (+) || op === (*)
+        return "(" * join(args, string(op)) * ")"
+    elseif op === (-)
+        return n == 1 ? "(-" * only(args) * ")" : "(" * join(args, "-") * ")"
+    elseif (op === (/) || op === (^)) && n == 2
+        return "(" * args[1] * string(op) * args[2] * ")"
+    elseif haskey(_RELATION_TEXT, op) && n == 2
+        return "(" * args[1] * _RELATION_TEXT[op] * args[2] * ")"
+    elseif haskey(_CONNECTIVE_TEXT, op)
+        return "(" * join(args, _CONNECTIVE_TEXT[op]) * ")"
+    elseif op === (!) && n == 1
+        return "(not(" * only(args) * "))"
+    elseif op === inv && n == 1
+        return "(1/" * only(args) * ")"
+    elseif op in _ELEMENTARY || (!exact && op isa Function)
+        return get(_GIAC_NAME, op, string(nameof(op))) * "(" * join(args, ",") * ")"
+    end
+    throw(ArgumentError("no exact Giac source for the function $op"))
+end
+
+"""
+    Giac.giac_source(t::SymbolicUtils.BasicSymbolic; names = Dict(), exact = true) -> String
+
+The Giac source text of the SymbolicUtils expression `t`, **unevaluated**: what Giac will
+receive, to record before it evaluates anything (`to_giac` builds the value instead, and Giac
+evaluates each node). `names` maps SymbolicUtils symbols to Giac names. Numbers stay exact
+(`(1/3)`), comparisons are Giac relations, `&`, `|` and `!` are `and`, `or` and `not`. With
+`exact = true`, a float or a function outside the elementary ones is an `ArgumentError`.
+
+```julia
+@syms x::Real
+Giac.giac_source((0 < x) & (x <= 10); names = Dict(x => "v"))   # "((0<v) and (v<=10))"
+```
+"""
+function Giac.giac_source(t::SU.BasicSymbolic; names::AbstractDict = Dict(), exact::Bool = true)
+    return _source(t, names, exact)
+end
+
 end # module
