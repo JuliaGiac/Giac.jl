@@ -294,6 +294,18 @@ invoke_cmd(:solve, expr, x)
 invoke_cmd(:gcd, a, b)
 ```
 
+## Taylor Polynomials and Collecting Terms
+
+```@docs
+taylor
+collect_terms
+Giac.coefficients
+```
+
+A function of Giac that has the name of a GIAC command (`taylor`) is not exported
+from `Giac.Commands` as well, so `using Giac, Giac.Commands` keeps the name
+unambiguous; the GIAC command is `Giac.Commands.taylor`.
+
 ## Vector Input Support
 
 GIAC commands accept Julia vectors directly, enabling natural syntax for systems of equations and matrix operations:

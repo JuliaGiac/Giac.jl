@@ -243,6 +243,25 @@ series(exp(x), x, 1, 3)
 # Expansion around x=1
 ```
 
+### Taylor Polynomials
+
+`taylor(f, x => a, n)` is the Taylor polynomial of `f` about `x = a`: every term
+up to total degree `n`, without the remainder term that `series` writes. It
+takes several variables, with the point as a vector or a tuple (a tuple keeps
+exact constants such as `π`), and applies entry by entry to an array:
+
+```julia
+@giac_var x1 x2 u
+taylor(sin(x1), x1, 5)                       # x1-x1^3/6+x1^5/120 (about 0)
+taylor(exp(x1), x1 => 1, 1)                  # exp(1)+exp(1)*(x1-1)
+taylor(-sin(x1) + x1*x2 + u*cos(x1), [x1, x2, u], 2)   # u-x1+x1*x2: total degree 2
+f = [x2, -sin(x1) + u*cos(x1)]
+taylor(f, [x1, x2, u] => (π, 0, 0), 1)       # [x2, x1-pi-u]: linearized about the upright position
+```
+
+GIAC's own `taylor` command, which keeps the remainder, is
+`Giac.Commands.taylor`.
+
 ## Advanced Topics
 
 ### Gradient and Hessian

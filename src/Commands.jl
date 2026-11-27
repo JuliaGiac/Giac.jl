@@ -516,6 +516,15 @@ for each command in `exportable_commands()`. The functions are exported from
 const _ARRAY_PROTOCOL = Set([:axes, :copy, :cat, :stack, :reverse, :repeat, :sort, :sortperm,
                              :cumsum, :extrema, :zeros, :rank, :nullspace, :dot, :⋅, :cross, :×])
 _giac_matrix_method(cmd::Symbol) = cmd ∉ _ARRAY_PROTOCOL
+# A command whose name Giac itself exports as a Julia function of its own (`taylor`, `jacobian`,
+# `hessian`, …) is not exported from here too, so `using Giac, Giac.Commands` does not make the
+# name ambiguous. The GIAC command stays reachable as `Giac.Commands.<name>` and `invoke_cmd`.
+function _exported_by_giac(cmd::Symbol)
+    G = parentmodule(@__MODULE__)
+    isdefined(G, cmd) && Base.isexported(G, cmd) || return false
+    return parentmodule(getfield(G, cmd)) === G
+end
+_export_expr(cmd::Symbol) = _exported_by_giac(cmd) ? nothing : Expr(:export, cmd)
 
 function _generate_command_functions()
     # Skip generation during precompilation of extensions to avoid
@@ -566,7 +575,7 @@ function _generate_command_functions()
                     @doc $docstring function $(cmd)(first_arg::GiacInput, rest...)::GiacExpr
                         invoke_cmd($(QuoteNode(cmd)), first_arg, rest...)
                     end
-                    export $(cmd)
+                    $(_export_expr(cmd))
                 end
             else
                 @eval begin
@@ -581,7 +590,7 @@ function _generate_command_functions()
                     function $(cmd)(first_arg::AbstractMatrix{GiacExpr}, rest...)::GiacExpr
                         invoke_cmd($(QuoteNode(cmd)), GiacMatrix(first_arg), rest...)
                     end
-                    export $(cmd)
+                    $(_export_expr(cmd))
                 end
             end
         end
@@ -650,7 +659,7 @@ function _generate_command_functions()
                 @doc $docstring function $(cmd)(first_arg::GiacMatrix, rest...)::GiacExpr
                     invoke_cmd($(QuoteNode(cmd)), first_arg, rest...)
                 end
-                export $(cmd)
+                $(_export_expr(cmd))
             end
             conflict_count += 1
         end

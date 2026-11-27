@@ -140,6 +140,21 @@ substitute(y^2, isolate(eq, y))
 keeps all its digits: `x ~ 0.123456789012345`. Equations between arrays of
 expressions, and solving for a matrix unknown, are described in
 [Linear Algebra](linear_algebra.md#Matrix-equations).
+## Collecting Terms
+`collect_terms(e, vars)` writes `e` as a sum over the monomials in the variables
+`vars`, each with its coefficient collected and normalized. Higher degrees come
+first, then higher powers of the earlier variables. A factor that depends on the
+variables without being a power of one (`sin(x1)`) is part of the monomial.
+`Giac.coefficients(e, vars)` gives the pieces as a `Dict`, with the term free of
+`vars` under `1`.
+@giac_var x1 x2 a b
+collect_terms(a*x1*x2 + b*x1*x2 + x2^2 + x1^2, [x1, x2])   # x1^2+(a+b)*x1*x2+x2^2
+collect_terms(a*sin(x1)*x2 + b*sin(x1)*x2, [x1, x2])      # (a+b)*x2*sin(x1)
+c = Giac.coefficients(a*x1^2 + b*x1*x2 + 2a*x1^2 + 3, [x1, x2])
+c[x1^2]              # 3*a
+c[one(GiacExpr)]     # 3
+`coefficients` is not exported, as other algebra packages export a function of
+that name.
 
 ## GCD and LCM
 
