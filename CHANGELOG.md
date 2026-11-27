@@ -35,6 +35,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   and `kron`. Generated commands accept a `Matrix{GiacExpr}` as they
   accept a `GiacMatrix`. New exported functions: `∇`, `jacobian` and
   `hessian`.
+- **`@giac_matrix` declares matrices of symbolic entries**, with a structure,
+  a property and assumptions on the entries: `@giac_matrix A[2, 3] P[2, 2]
+  [posdef] W[3, 3] [skew] V[2, 2]::(upper, real)`. The structures
+  (`symmetric`, `skew`, `diagonal`, `upper`, `lower`) are ported from Kahli
+  Burke's `ergonomics` branch; the syntax is the one agreed with
+  MathInterchange, with Symbolics-style brackets and entries named like the
+  arrays of `@giac_var` (`P₁_₂`). `posdef` and `negdef` make the matrix
+  symmetric with a positive (negative) diagonal, and
+  `Giac.matrix_properties(M)` gives what a matrix was declared with.
 
 - **`@exact` keeps the numbers of symbolic code exact**, ported from Kahli
   Burke's ergonomics branch. A float literal is read from its shortest

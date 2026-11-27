@@ -75,6 +75,7 @@ include("operators.jl")
 include("macros.jl")
 include("exact_literals.jl")
 include("decl.jl")
+include("matrix_decl.jl")
 include("tables.jl")
 include("substitute.jl")
 include("build_function.jl")
@@ -120,7 +121,7 @@ export expand_derivatives
 export giac_eval, to_julia, list_commands, help_count
 
 # Macros (011-giac-symbol-macro, 012-giac-several-var)
-export @giac_var, @giac_several_vars
+export @giac_var, @giac_several_vars, @giac_matrix
 export ∇, jacobian, hessian
 export lhs, rhs, isolate
 export @exact

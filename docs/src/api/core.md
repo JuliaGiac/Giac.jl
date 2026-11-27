@@ -47,6 +47,8 @@ isapprox(GiacExpr(π), 355//113; rtol = 1e-6)  # true
 ```@docs
 @giac_var
 @giac_several_vars
+@giac_matrix
+Giac.matrix_properties
 ```
 
 ### Function Syntax for @giac_var

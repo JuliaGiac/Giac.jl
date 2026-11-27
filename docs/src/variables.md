@@ -30,6 +30,34 @@ k = 4
 @giac_var a[1:k]          # ranges may use variables: a₁ … a₄
 ```
 
+### Matrices of variables
+
+`@giac_matrix` declares matrices of symbolic entries, named like the arrays
+above. Sizes may be integers (indices from 1) or ranges, and may use variables.
+A structure, a property and assumptions on the entries go in brackets after the
+matrix, or after `::`:
+
+```julia
+@giac_matrix A[2, 3]                 # A₁_₁ … A₂_₃
+@giac_matrix S[2, 2] [symmetric]     # [S₁_₁ S₁_₂; S₁_₂ S₂_₂]
+@giac_matrix W[3, 3] [skew]          # [0 W₁_₂ W₁_₃; -W₁_₂ 0 W₂_₃; -W₁_₃ -W₂_₃ 0]
+@giac_matrix D[2, 2] [diagonal] U[2, 2] [upper] L[2, 2] [lower]
+@giac_matrix V[2, 2] [upper, real]   # assumptions apply to the free entries
+@giac_matrix P[2, 2] [posdef]        # symmetric, with a positive diagonal
+```
+
+| Specification | Meaning |
+|---|---|
+| `symmetric` | entry `(j, i)` is entry `(i, j)` |
+| `skew` | entry `(j, i)` is minus entry `(i, j)`; zero diagonal |
+| `diagonal`, `upper`, `lower` | the other entries are 0 |
+| `posdef`, `negdef` | definite: symmetric (or diagonal), diagonal entries positive (negative) |
+| `real`, `positive`, `>(0)`, … | assumptions on every free entry, as in `@giac_var` |
+
+Giac's assumptions are on variables, so for `posdef` and `negdef` only the sign of
+the diagonal entries reaches Giac. `Giac.matrix_properties(P)` returns the
+structure and properties a matrix was declared with.
+
 ### Renaming
 
 `v => "name"` binds the Julia variable `v` to a Giac variable with another
