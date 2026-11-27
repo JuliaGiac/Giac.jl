@@ -222,6 +222,30 @@ purge(x)
     purge(x)
     assume(x > 0)  # Works
     ```
+### Reading what GIAC assumes: `assumptions`
+
+`about(x)` prints GIAC's record, such as `assume[integer,[line[2,+infinity]],[2]]`.
+`assumptions(x)` gives it as data: the domain, the union of intervals with open
+or closed ends, the excluded points, or the value of an assigned variable. GIAC's
+own record is kept in `raw`.
+
+```julia
+@giac_var a b c
+Giac.Commands.assume((a > 0) & (a <= 10))
+assumptions(a)              # Assumptions(]0, 10])
+assumptions(a).intervals    # [(lo = 0, hi = 10, lo_closed = false, hi_closed = true)]
+
+@giac_var b::(integer, >(2))
+assumptions(b).domain       # :integer
+
+Giac.Commands.assume((c < 0) | (c > 10))
+length(assumptions(c).intervals)   # 2: a disjunction is a union
+```
+
+The record holds only what reached GIAC. GIAC keeps no trace of some
+conditions, such as `x != 3`, so comparing the record with the premises you
+gave tells whether each of them was applied.
+
 ### Assumptions for one block: `assuming`
 
 GIAC's assumptions are global: `assume(x > 0)` holds for everything evaluated
