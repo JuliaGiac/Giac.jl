@@ -80,12 +80,13 @@ function Base.string(expr::GiacExpr)::String
     return GC.@preserve expr _giac_expr_to_string(expr.ptr)
 end
 
+# a trace or determinant of symbolic matrices shows as such (see matrix_symbols.jl)
 function Base.show(io::IO, expr::GiacExpr)
-    print(io, string(expr))
+    print(io, _atom_plain(string(expr)))
 end
 
 function Base.show(io::IO, ::MIME"text/plain", expr::GiacExpr)
-    print(io, "GiacExpr: ", string(expr))
+    print(io, "GiacExpr: ", _atom_plain(string(expr)))
 end
 
 # ============================================================================
