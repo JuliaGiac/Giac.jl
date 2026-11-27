@@ -75,9 +75,12 @@
         # T012: Export count should be reasonable (not the ~2000+ commands)
         # Count only the non-private exports (those not starting with underscore)
         public_exports = filter(s -> !startswith(string(s), "_"), giac_exports)
-        # Core API + utilities + output handling (029) should be under 75 symbols (not thousands)
+        # Core API + utilities + output handling (029) + the symbolic-algebra helpers of the
+        # ergonomics port (∇, jacobian, hessian, lhs, rhs, isolate, @giac_matrix, taylor,
+        # collect_terms, assuming, with_settings, giac_settings) should be under 90 symbols
+        # (not thousands), as on Kahli Burke's `ergonomics` branch
         # Output handling adds: 13 type constants + 10 predicates + 6 accessors = ~29 exports
-        @test length(public_exports) <= 75
+        @test length(public_exports) <= 90
     end
 
     @testset "Exportable Commands Generation" begin
