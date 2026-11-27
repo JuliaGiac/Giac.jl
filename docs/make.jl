@@ -47,6 +47,7 @@ _pages = [
     "Extensions" => [
          "Symbolics.jl" => "extensions/symbolics.md",
          "SymbolicUtils.jl (exact)" => "extensions/symbolicutils.md",
+         "BlockArrays.jl" => "extensions/blockarrays.md",
          "SymPy.jl" => "extensions/sympy.md",
          "MathJSON.jl" => "extensions/mathjson.md",
          "MCP Server" => "extensions/mcp.md",

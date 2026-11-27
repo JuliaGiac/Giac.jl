@@ -159,6 +159,8 @@ using LinearAlgebra
     include("test_symbolics_ext.jl")
     # SymbolicUtils extension: exact conversion with SymbolicUtils alone (MathInterchange)
     include("test_symbolicutils_ext.jl")
+    # BlockArrays extension: block matrices of expressions
+    include("test_blockarrays_ext.jl")
 
     # ============================================================================
     # Constants Module Tests (053-symbolic-pi-constant)
