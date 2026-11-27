@@ -894,7 +894,9 @@ end
 """
     GiacMatrix
 
-Represents a symbolic matrix with GiacExpr elements.
+Represents a symbolic matrix with GiacExpr elements, stored in GIAC. It is an
+`AbstractMatrix{GiacExpr}`, so slicing, `A'`, broadcasting and Julia's generic linear algebra
+apply to it, alongside the GIAC-backed methods (`*`, `+`, `det`, `inv`, `transpose`, …).
 
 # Fields
 - `ptr::Ptr{Cvoid}`: Pointer to GIAC matrix object
@@ -907,7 +909,7 @@ A = GiacMatrix([[a, b], [c, d]])
 det(A)  # a*d - b*c
 ```
 """
-mutable struct GiacMatrix
+mutable struct GiacMatrix <: AbstractMatrix{GiacExpr}
     ptr::Ptr{Cvoid}
     rows::Int
     cols::Int

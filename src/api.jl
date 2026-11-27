@@ -116,39 +116,8 @@ function GiacMatrix(elements::Vector{<:Vector})
     return GiacMatrix(matrix)
 end
 
-# iterate over a matrix
-function Base.iterate(M::GiacMatrix, state=nothing)
-    m, n = size(M)
-    sz = m*n
-    # doing computation by hand, must be a better way
-    i = isnothing(state) ? 1 : state + 1
-    i > sz && return nothing
-    c,r = divrem(i-1, m)
-    return (M[r+1, c+1], i)
-end
-
-Base.length(M::GiacMatrix) = (sz = size(M); sz[1]*sz[2])
-Base.axes(M::GiacMatrix) = Base.OneTo.(size(M))
-Base.IteratorSize(::Type{GiacMatrix}) = Base.HasShape{2}()
-Base.eltype(::Type{GiacMatrix}) = GiacExpr
-
-
-# linear access for GiacMatrix
-function Base.LinearIndices(M::GiacMatrix)
-    m,n = size(M)
-    Base.LinearIndices((Base.OneTo(m), Base.OneTo(n)))
-end
-
-function Base.CartesianIndices(M::GiacMatrix)
-    m,n = size(M)
-    Base.CartesianIndices((Base.OneTo(m), Base.OneTo(n)))
-end
-
-Base.getindex(M::GiacMatrix, i::Int) = M[Base.CartesianIndices(M)[i]]
-Base.getindex(M::GiacMatrix, I::CartesianIndex) = M[I.I...]
-
-# broadcast over a matrix
-Base.Broadcast.broadcastable(M::GiacMatrix) = collect(GiacExpr, M)
+# Iteration, linear indexing, `length`, `axes`, slicing and broadcasting come from
+# `AbstractMatrix`.
 
 function Base.adjoint(M::GiacMatrix)
     return transpose(GiacMatrix(invoke_cmd(:apply, :conj, M)))

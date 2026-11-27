@@ -110,8 +110,9 @@ The same range syntax works with `@giac_several_vars`:
 
 ## Iteration and Linear Indexing
 
-`GiacMatrix` supports the standard Julia iteration and linear-indexing
-protocols. Iteration order is **column-major**, matching Julia's `Matrix`.
+`GiacMatrix` is an `AbstractMatrix{GiacExpr}`, so it supports the standard Julia
+iteration, indexing and slicing protocols. Iteration order is **column-major**,
+matching Julia's `Matrix`.
 
 ### `length` and basic iteration
 
@@ -126,7 +127,7 @@ for e in M
     println(e)       # x, 2*x, y, 2*y, x+y, x*y  (column-major)
 end
 
-collect(M)           # 6-element Vector
+collect(M)           # 2×3 Matrix{GiacExpr}: collect keeps the shape
 ```
 
 ### Linear indexing `M[i]` and Cartesian-index access
@@ -162,6 +163,63 @@ LI = LinearIndices(M)
 for i in 1:M.rows, j in 1:M.cols
     @assert M[LI[i, j]] === M[i, j] || string(M[LI[i, j]]) == string(M[i, j])
 end
+```
+
+## Julia arrays of expressions
+
+Because `GiacMatrix` is an `AbstractMatrix{GiacExpr}`, a Giac matrix and an
+ordinary `Matrix{GiacExpr}` work with the same Julia code: slicing, `A'`,
+broadcasting, block concatenation and `LinearAlgebra`. Giac does the scalar
+algebra, and the operations Julia's generic code cannot do on symbolic entries
+(determinant, inverse, solves, spectra) are handed to Giac.
+
+```julia
+@giac_var a11 a12 a21 a22 x1 x2 s t
+A = [a11 a12; a21 a22]           # a Matrix{GiacExpr}
+x = [x1, x2]
+
+M = GiacMatrix(A)
+M[:, 1]                          # [a11, a21]
+Matrix(M)                        # back to a Matrix{GiacExpr}
+
+A + I                            # [a11+1 a12; a21 a22+1]
+s * I - A                        # a symbolic multiple of the identity
+[A I; I A']                      # block matrices; `true` and `false` are 1 and 0
+t * x                            # [t*x1, t*x2]
+
+det(A)                           # a11*a22-a12*a21
+inv(A)                           # a Matrix{GiacExpr}
+A \ x                            # solves A y = x
+
+E = GiacExpr[0 1; -2 -3]
+eigvals(E)                       # [-2, -1]: numbers by real part, then imaginary part
+eigen(E)                         # values and eigenvectors (throws if not diagonalizable)
+rank(E), nullspace(GiacExpr[1 2; 2 4])
+exp(E * t)                       # the state-transition matrix of ẋ = E x
+```
+
+A Giac matrix stays one under scaling by a number or an expression, division,
+negation, `± I` and `kron`, and generated commands accept a `Matrix{GiacExpr}`
+as they accept a `GiacMatrix`:
+
+```julia
+using Giac.Commands: eigenvalues
+@giac_var θ
+σz, σx = GiacMatrix([1 0; 0 -1]), GiacMatrix([0 1; 1 0])
+σθ = cos(θ) * σz + sin(θ) * σx   # a GiacMatrix
+σz / 2                           # exact: [1/2 0; 0 -1/2]
+eigenvalues(Matrix(σθ))          # same as eigenvalues(σθ)
+```
+
+### Gradient, Jacobian and Hessian
+
+```julia
+@giac_var w1 w2 k
+w = [w1, w2]
+f = w1^2 * w2 + k * w2
+∇(f, w)                          # [2*w1*w2, w1^2+k]
+hessian(f, w)                    # [2*w2 2*w1; 2*w1 0]
+jacobian([w1 * w2, w1 + w2], w)  # [w2 w1; 1 1]
 ```
 
 ## Determinant
@@ -378,6 +436,12 @@ A^2
 | `eigenvalues(GiacExpr(M.ptr))` | Eigenvalues |
 | `linsolve(eqs, vars)` | Solve linear system |
 | `invoke_cmd(:rank, GiacExpr(M.ptr))` | Matrix rank |
+| `M[:, j]`, `M[i, :]`, `Matrix(M)` | Slices and the Julia matrix of entries |
+| `A ± I`, `s * I - A` | Add a (symbolic) multiple of the identity |
+| `det(A)`, `inv(A)`, `A \ b` | On any `AbstractMatrix{GiacExpr}`, by Giac |
+| `eigvals(A)`, `eigen(A)`, `eigvecs(A)` | Spectrum, by Giac's Jordan form |
+| `rank(A)`, `nullspace(A)`, `exp(A)` | Rank, null-space basis, matrix exponential |
+| `∇(f, x)`, `jacobian(f, x)`, `hessian(f, x)` | Gradient, Jacobian, Hessian |
 
 ## Notes
 

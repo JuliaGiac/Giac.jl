@@ -9,6 +9,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **`GiacMatrix` is an `AbstractMatrix{GiacExpr}`, and Julia arrays of
+  expressions get symbolic linear algebra**, ported from Kahli Burke's
+  `ergonomics` branch (step 4a of the port). Slicing (`M[:, 1]`), `A'`,
+  broadcasting and Julia's generic array code apply to a Giac matrix, and
+  `Matrix(M)` gives its entries as a `Matrix{GiacExpr}`. On any
+  `AbstractMatrix{GiacExpr}`: `A ± I`, `s*I - A` for a symbolic `s`,
+  scaling by an expression, block concatenation (`[A I; I A']`), `det`,
+  `inv` and `A \ b` by Giac, `eigvals`/`eigen`/`eigvecs` (numeric
+  eigenvalues by real part, then imaginary part), `rank`, `nullspace`,
+  `exp` and the 5-argument `mul!`. A `GiacMatrix` stays one under scaling
+  by a number or an expression, exact division (`σ/2`), negation, `± I`
+  and `kron`. Generated commands accept a `Matrix{GiacExpr}` as they
+  accept a `GiacMatrix`. New exported functions: `∇`, `jacobian` and
+  `hessian`.
+
 - **`@exact` keeps the numbers of symbolic code exact**, ported from Kahli
   Burke's ergonomics branch. A float literal is read from its shortest
   decimal form and becomes the exact Giac fraction: `@exact 0.1 + 0.2` is
@@ -24,6 +39,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   fractions. See "Exact Numbers" in the Core API page.
 
 ### Changed
+
+- **A Julia `Bool` converts to the integer 1 or 0**, as in Julia arithmetic
+  (`Bool <: Integer`), instead of GIAC's logical constant: `x + true` is
+  `x+1`. This is what gives `I` its 1s and 0s in symbolic matrices. GIAC's
+  logical constants remain `giac_eval("true")` and `giac_eval("false")`.
+- **Julia's array functions keep their generic meaning on a `GiacMatrix`**
+  (`reverse`, `sort`, `cumsum`, `axes`, `copy`, `rank`, `nullspace`, `dot`,
+  `cross`, …) instead of calling the GIAC command of the same name; the
+  command is still `Giac.Commands.<name>` or `invoke_cmd`.
 
 - **`GiacLibPARIExt` accepts LibPARI 0.19** (PARI 2.19.1, `PARI_jll`
   200.1900.100): the `LibPARI` compat becomes `"0.17, 0.18, 0.19"`. The
