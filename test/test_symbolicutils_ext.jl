@@ -1,0 +1,78 @@
+# GiacSymbolicUtilsExt: exact conversion between Giac and SymbolicUtils, with SymbolicUtils alone
+# (no Symbolics). The cases are MathInterchange's fixtures (MathInterfaceGiac.jl, test/giac.jl):
+# exact numbers, radicals never turned into floats, an error rather than a guess.
+
+using SymbolicUtils
+const SU = SymbolicUtils
+
+@testset "GiacSymbolicUtilsExt" begin
+    @syms x::Real
+    @giac_var v
+    C = Giac.Commands
+    names = Dict("v" => x)                     # Giac name => SymbolicUtils symbol
+    su(g) = to_symbolicutils(g; symbols = names)
+    eq(a, b) = isequal(SU.simplify(a - b), 0) || isequal(a, b)
+
+    @testset "exact antiderivatives" begin
+        @test isequal(su(C.integrate(v^2 + 2, v)), (1 // 3) * x^3 + 2x)
+        @test eq(su(C.integrate(2v + 1, v)), x^2 + x)
+        @test isequal(su(C.integrate((v + 1)^2, v)), (1 // 3) * (1 + x)^3)        # kept factored
+        @test isequal(su(C.integrate(3 * v^2 / 4 - v + 5, v)), (1 // 4) * x^3 - (1 // 2) * x^2 + 5x)
+    end
+
+    @testset "simplify under premises" begin
+        @test isequal(su(assuming(() -> C.simplify(sqrt(v^2)), v > 0)), x)
+        @test isequal(su(C.simplify(sqrt(v^2))), abs(x))
+        @test isequal(su(assuming(() -> C.simplify(sqrt(v^2)), v < 0)), -x)
+    end
+
+    @testset "numbers stay exact" begin
+        s = su(sqrt(giac_eval("2")) * v)
+        @test isequal(s, SU.term(sqrt, 2) * x)
+        @test !occursin("1.41", string(s))
+        @test su(giac_eval("1/3")) === 1 // 3 || su(giac_eval("1/3")) == Rational{BigInt}(1, 3)
+        @test su(giac_eval("1/3")) isa Rational{BigInt}
+        @test su(giac_eval("inv(2)")) == 1 // 2
+        @test su(giac_eval("7")) === 7
+        big_n = su(giac_eval("2^100"))
+        @test big_n isa BigInt && big_n == big(2)^100
+        @test isequal(su(giac_eval("v^(1/3)")), x^(1 // 3))
+        @test isequal(su(giac_eval("sqrt(v)")), sqrt(x))
+        # constants that arithmetic must not turn into floats
+        @test !occursin("6.28", string(su(2 * giac_eval("pi") * v)))
+        @test occursin("exp(1)", string(su(giac_eval("exp(1)"))))
+        @test isequal(su(giac_eval("i")), im)
+    end
+
+    @testset "an error rather than a guess" begin
+        @test_throws ArgumentError su(giac_eval("1.5"))                     # a float
+        @test_throws ArgumentError su(giac_eval("1.5") * v)
+        @test isequal(su(giac_eval("atan(v)")), atan(x))                    # in the table
+        @test_throws ArgumentError su(giac_eval("Gamma(v)"))                # not in the table
+        @test to_symbolicutils(giac_eval("1.5"); exact = false) == 1.5      # opt out
+        # a name the caller did not map becomes a SymbolicUtils symbol of the same name
+        w = to_symbolicutils(giac_eval("w"))
+        @test SU.issym(w) && string(w) == "w"
+    end
+
+    @testset "to Giac" begin
+        back = Dict(x => "v")                   # SymbolicUtils symbol => Giac name
+        G(t) = to_giac(t; names = back)
+        # the same Giac expression as MathInterchange's string: GIAC writes `0<v` as `v>0`
+        same_relation(t, s) = string(G(t)) == string(giac_eval(s))
+        same_value(t, s) = string(C.simplify(G(t) - giac_eval(s))) == "0"
+        @test same_relation(x > 0, "0<v")
+        @test same_relation((x < 0) | (x > 10), "(v<0) or (10<v)")
+        @test same_relation((0 < x) & (x <= 10), "(0<v) and (v<=10)")
+        @test string(to_giac(1 // 3 * x; names = back)) in ("v/3", "1/3*v")
+        @test same_value(x^2 + 2x, "v^2+2*v")
+        @test string(G(sqrt(x))) == "sqrt(v)"
+        @test same_value(SU.term(sqrt, 2) * x, "sqrt(2)*v")
+        @test !occursin("1.41", string(G(SU.term(sqrt, 2) * x)))
+        @test_throws ArgumentError to_giac(0.5 * x; names = back)
+        @test string(to_giac(0.5 * x; names = back, exact = false)) == "0.5*v"
+        # a round trip keeps exactness
+        e = (1 // 3) * x^3 + SU.term(sqrt, 2) * x
+        @test isequal(to_symbolicutils(to_giac(e; names = back); symbols = names), e)
+    end
+end
