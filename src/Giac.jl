@@ -101,6 +101,8 @@ include("Commands.jl")
 include("array_algebra.jl")
 # Equations as values: lhs, rhs, isolate, arithmetic on both sides
 include("equations.jl")
+# Taylor polynomials and grouping by monomials (ported from the ergonomics branch)
+include("collect.jl")
 
 
 # Include Constants submodule (053-symbolic-pi-constant)
@@ -124,6 +126,7 @@ export giac_eval, to_julia, list_commands, help_count
 export @giac_var, @giac_several_vars, @giac_matrix
 export ∇, jacobian, hessian
 export lhs, rhs, isolate
+export taylor, collect_terms
 export @exact
 
 # Command invocation (009-commands-submodule)

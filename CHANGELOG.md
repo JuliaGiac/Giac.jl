@@ -44,6 +44,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   arrays of `@giac_var` (`P₁_₂`). `posdef` and `negdef` make the matrix
   symmetric with a positive (negative) diagonal, and
   `Giac.matrix_properties(M)` gives what a matrix was declared with.
+- **`taylor` and `collect_terms`**, ported from Kahli Burke's `ergonomics`
+  branch. `taylor(f, x => a, n)` is the Taylor polynomial of `f` about
+  `x = a` up to total degree `n`, in one or several variables (the point as a
+  vector or a tuple, which keeps `π` exact), entry by entry for an array.
+  `collect_terms(e, vars)` groups `e` by monomials in `vars` with collected,
+  normalized coefficients, in graded order; `Giac.coefficients(e, vars)`
+  (unexported) gives them as a `Dict`.
 
 - **`@exact` keeps the numbers of symbolic code exact**, ported from Kahli
   Burke's ergonomics branch. A float literal is read from its shortest
@@ -73,6 +80,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (`reverse`, `sort`, `cumsum`, `axes`, `copy`, `rank`, `nullspace`, `dot`,
   `cross`, …) instead of calling the GIAC command of the same name; the
   command is still `Giac.Commands.<name>` or `invoke_cmd`.
+- **`Giac.Commands` does not export a command whose name Giac exports as its
+  own function**, so `using Giac, Giac.Commands` does not make the name
+  ambiguous: `taylor` is Giac's Taylor polynomial, and GIAC's `taylor`
+  command (with its remainder term) is `Giac.Commands.taylor`.
 
 - **`GiacLibPARIExt` accepts LibPARI 0.19** (PARI 2.19.1, `PARI_jll`
   200.1900.100): the `LibPARI` compat becomes `"0.17, 0.18, 0.19"`. The
