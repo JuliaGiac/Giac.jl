@@ -534,6 +534,7 @@ Giac.to_julia
 Giac.to_giac
 Giac.to_symbolics
 Giac.to_symbolicutils
+Giac.giac_source
 ```
 
 ### How numbers are read

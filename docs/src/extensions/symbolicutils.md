@@ -37,7 +37,9 @@ to_giac((0 < x) & (x <= 10); names = Dict(x => "v"))       # (v>0) and (10>=v)
 
 `symbols` maps Giac names to the SymbolicUtils symbols to use (for instance
 your own fresh names). A name not in it becomes a `Real` symbol of the same
-name. With `exact = true`, the default, a GIAC float or a function outside the
+name; with `strict_symbols = true` it is an `ArgumentError` instead, for a
+caller to whom an identifier outside its request means something unexpected
+came back. With `exact = true`, the default, a GIAC float or a function outside the
 elementary ones (such as `Gamma`) is an `ArgumentError`; `exact = false`
 accepts them.
 
@@ -51,3 +53,20 @@ or an unknown function is an `ArgumentError`.
 A round trip keeps exactness:
 `to_symbolicutils(to_giac(e; names); symbols)` is `e` for
 `e = (1//3)*x^3 + sqrt(2)*x`.
+
+## Unevaluated Giac source
+
+`to_giac` builds the value, and Giac evaluates each node as it is built.
+`Giac.giac_source(t; names, exact = true)` writes the Giac source text instead,
+unevaluated, so a caller can record exactly what Giac receives:
+
+```julia
+Giac.giac_source((0 < x) & (x <= 10); names = Dict(x => "v"))   # "((0<v) and (v<=10))"
+Giac.giac_source(sqrt(x^2); names = Dict(x => "v"))              # "sqrt((v^2))"
+```
+
+Numbers stay exact (`(1/3)`); comparisons are Giac relations; `&`, `|` and `!`
+are `and`, `or` and `not`. A float or an unknown function is an `ArgumentError`
+in exact mode. `giac_eval(Giac.giac_source(t; names))` gives what
+`to_giac(t; names)` builds.
+

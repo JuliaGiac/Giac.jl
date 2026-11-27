@@ -24,7 +24,7 @@ _inexact(what) = throw(ArgumentError(
 
 _isnumber(a) = a isa Number
 
-function _from_leaf(g::GiacExpr, symbols, exact::Bool)
+function _from_leaf(g::GiacExpr, symbols, exact::Bool, strict::Bool)
     t = Giac.giac_type(g)
     if t == Giac.GenTypes.INT || t == Giac.GenTypes.ZINT
         n = Giac.to_julia(g)
@@ -36,14 +36,15 @@ function _from_leaf(g::GiacExpr, symbols, exact::Bool)
         exact && _inexact("the float $(string(g))")
         return Giac.to_julia(g)
     elseif t == Giac.GenTypes.CPLX
-        re = _from(Giac.real_part(g), symbols, exact)
-        im_ = _from(Giac.imag_part(g), symbols, exact)
+        re = _from(Giac.real_part(g), symbols, exact, strict)
+        im_ = _from(Giac.imag_part(g), symbols, exact, strict)
         return re + im_ * im
     elseif t == Giac.GenTypes.IDNT
         name = string(g)
         haskey(symbols, name) && return symbols[name]
         name == "pi" && return SU.term(identity, π)     # a term, so that 2π is not folded
         name == "i" && return im
+        strict && throw(ArgumentError("the Giac name `$name` is not in `symbols` (strict_symbols = true)"))
         sym = SU.Sym{SU.SymReal}(Symbol(name); type = Real)
         symbols[name] = sym
         return sym
@@ -67,10 +68,10 @@ _simplest(q::Rational{BigInt}) = isone(denominator(q)) ? _simplest(numerator(q))
 _simplest(n::BigInt) = typemin(Int) <= n <= typemax(Int) ? Int(n) : n
 _simplest(x) = x
 
-function _from(g::GiacExpr, symbols, exact::Bool)
-    Giac.iscall(g) || return _from_leaf(g, symbols, exact)
+function _from(g::GiacExpr, symbols, exact::Bool, strict::Bool = false)
+    Giac.iscall(g) || return _from_leaf(g, symbols, exact, strict)
     op = Giac.operation(g)
-    args = [_from(a, symbols, exact) for a in Giac.arguments(g)]
+    args = [_from(a, symbols, exact, strict) for a in Giac.arguments(g)]
     if !(op isa Function)
         exact && _inexact("the Giac function $(Giac.symb_funcname(g))")
         return SU.term(op, args...)
@@ -93,7 +94,7 @@ function _from(g::GiacExpr, symbols, exact::Bool)
 end
 
 """
-    to_symbolicutils(g::GiacExpr; symbols = Dict{String, Any}(), exact = true)
+    to_symbolicutils(g::GiacExpr; symbols = Dict{String, Any}(), exact = true, strict_symbols = false)
 
 `g` as a SymbolicUtils expression, with no Symbolics needed. Numbers are exact: `Int` or
 `BigInt`, `Rational{BigInt}` for fractions (`inv(2)` is `1//2`). Radicals stay unevaluated
@@ -101,12 +102,13 @@ end
 term so that arithmetic does not fold `2π` into a float, `exp(1)` stays a term and `i` is `im`.
 
 `symbols` maps Giac names to the SymbolicUtils symbols to use; a name not in it becomes a
-`Real` symbol of the same name (added to `symbols`). With `exact = true`, a float or a function
+`Real` symbol of the same name (added to `symbols`), or, with `strict_symbols = true`, is an
+`ArgumentError`: an identifier the caller did not expect came back. With `exact = true`, a float or a function
 outside the elementary ones is an `ArgumentError`; `exact = false` accepts them.
 """
 function Giac.to_symbolicutils(g::GiacExpr; symbols::AbstractDict = Dict{String, Any}(),
-                               exact::Bool = true)
-    return GC.@preserve g _from(g, symbols, exact)
+                               exact::Bool = true, strict_symbols::Bool = false)
+    return GC.@preserve g _from(g, symbols, exact, strict_symbols)
 end
 
 # ---------------------------------------------------------------------------------------------
@@ -151,6 +153,80 @@ it keeps its own name. Comparisons and `&`, `|` become Giac relations and `and`,
 """
 function Giac.to_giac(t::SU.BasicSymbolic; names::AbstractDict = Dict(), exact::Bool = true)
     return _to(t, names, exact)
+end
+
+# ---------------------------------------------------------------------------------------------
+# SymbolicUtils → Giac source text, unevaluated
+# ---------------------------------------------------------------------------------------------
+
+const _GIAC_NAME = Dict{Any, String}(log => "ln")
+const _RELATION_TEXT = Dict{Any, String}((<) => "<", (<=) => "<=", (>) => ">", (>=) => ">=",
+                                         (==) => "==", (!=) => "!=")
+const _CONNECTIVE_TEXT = Dict{Any, String}((&) => " and ", (|) => " or ")
+
+function _number_source(c, exact::Bool)
+    if c isa Integer
+        return c < 0 ? "($c)" : string(c)
+    elseif c isa Rational
+        n, d = numerator(c), denominator(c)
+        isone(d) && return _number_source(n, exact)
+        return "($n/$d)"
+    elseif c isa Complex
+        return "(" * _number_source(real(c), exact) * "+" * _number_source(imag(c), exact) * "*i)"
+    elseif c === π
+        return "pi"
+    elseif c === ℯ
+        return "exp(1)"
+    end
+    exact && _inexact_giac(c)
+    return string(c)
+end
+
+function _source(t, names, exact::Bool)
+    t isa Number && return _number_source(t, exact)
+    SU.isconst(t) && return _number_source(SU.unwrap_const(t), exact)
+    SU.issym(t) && return get(names, t, string(nameof(t)))
+    SU.iscall(t) || throw(ArgumentError("cannot write $(repr(t)) as Giac source"))
+    op = SU.operation(t)
+    args = [_source(a, names, exact) for a in SU.arguments(t)]
+    n = length(args)
+    op === identity && n == 1 && return only(args)
+    if op === (+) || op === (*)
+        return "(" * join(args, string(op)) * ")"
+    elseif op === (-)
+        return n == 1 ? "(-" * only(args) * ")" : "(" * join(args, "-") * ")"
+    elseif (op === (/) || op === (^)) && n == 2
+        return "(" * args[1] * string(op) * args[2] * ")"
+    elseif haskey(_RELATION_TEXT, op) && n == 2
+        return "(" * args[1] * _RELATION_TEXT[op] * args[2] * ")"
+    elseif haskey(_CONNECTIVE_TEXT, op)
+        return "(" * join(args, _CONNECTIVE_TEXT[op]) * ")"
+    elseif op === (!) && n == 1
+        return "(not(" * only(args) * "))"
+    elseif op === inv && n == 1
+        return "(1/" * only(args) * ")"
+    elseif op in _ELEMENTARY || (!exact && op isa Function)
+        return get(_GIAC_NAME, op, string(nameof(op))) * "(" * join(args, ",") * ")"
+    end
+    throw(ArgumentError("no exact Giac source for the function $op"))
+end
+
+"""
+    Giac.giac_source(t::SymbolicUtils.BasicSymbolic; names = Dict(), exact = true) -> String
+
+The Giac source text of the SymbolicUtils expression `t`, **unevaluated**: what Giac will
+receive, to record before it evaluates anything (`to_giac` builds the value instead, and Giac
+evaluates each node). `names` maps SymbolicUtils symbols to Giac names. Numbers stay exact
+(`(1/3)`), comparisons are Giac relations, `&`, `|` and `!` are `and`, `or` and `not`. With
+`exact = true`, a float or a function outside the elementary ones is an `ArgumentError`.
+
+```julia
+@syms x::Real
+Giac.giac_source((0 < x) & (x <= 10); names = Dict(x => "v"))   # "((0<v) and (v<=10))"
+```
+"""
+function Giac.giac_source(t::SU.BasicSymbolic; names::AbstractDict = Dict(), exact::Bool = true)
+    return _source(t, names, exact)
 end
 
 end # module

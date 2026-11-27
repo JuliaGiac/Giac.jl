@@ -215,6 +215,14 @@ Symbolics). Extended by GiacSymbolicUtilsExt; see its method for the details.
 function to_symbolicutils end
 
 """
+    Giac.giac_source(t; names = Dict(), exact = true) -> String
+
+The Giac source text of a SymbolicUtils expression, unevaluated. Extended by
+GiacSymbolicUtilsExt; see its method for the details.
+"""
+function giac_source end
+
+"""
     to_mathjson(expr::GiacExpr)
     to_mathjson(m::GiacMatrix)
 

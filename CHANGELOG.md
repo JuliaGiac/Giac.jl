@@ -15,6 +15,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   captures a name; `fresh_identifier(prefix)` returns a free name no other
   call returns; `with_fresh_identifiers(f, n)` gives `n` of them to a block
   and purges them afterwards.
+- **`Giac.giac_source(t; names, exact = true)`**: the Giac source text of a
+  SymbolicUtils expression, unevaluated, so a caller can record what Giac
+  receives before it evaluates anything (`to_giac` builds the value, and Giac
+  evaluates each node). Exact numbers, Giac relations, `and`, `or`, `not`;
+  an `ArgumentError` on a float or an unknown function in exact mode
+  (requested by MathInterchange to replace their own string translation).
+
+- **`to_symbolicutils(...; strict_symbols = true)`**: a Giac name absent from
+  `symbols` is an `ArgumentError` instead of a new `Real` symbol, for callers
+  to whom an identifier outside their request means something unexpected
+  came back (requested by MathInterchange after their acceptance check).
 
 - **`giac_version()`** returns the version of the GIAC library as a
   `VersionNumber`, read from GIAC's `version()` banner (MathInterchange's
