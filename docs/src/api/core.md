@@ -22,6 +22,7 @@ GiacInput
 
 ```@docs
 giac_eval
+giac_version
 ```
 
 ## Numbers and approximate equality

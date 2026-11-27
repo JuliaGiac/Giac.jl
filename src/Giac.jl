@@ -122,7 +122,7 @@ export D, Differential, DerivativeExpr, DerivativePoint, DerivativeCondition
 export expand_derivatives
 
 # Core functions
-export giac_eval, to_julia, list_commands, help_count
+export giac_eval, to_julia, list_commands, help_count, giac_version
 
 # Macros (011-giac-symbol-macro, 012-giac-several-var)
 export @giac_var, @giac_several_vars, @giac_matrix

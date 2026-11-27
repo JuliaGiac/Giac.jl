@@ -54,6 +54,20 @@ function giac_eval(expr::GiacExpr, ctx::GiacContext=DEFAULT_CONTEXT[])::GiacExpr
     return giac_eval(string(expr), ctx)
 end
 
+"""
+    giac_version() -> VersionNumber
+
+The version of the GIAC library in use, read from GIAC's `version()` banner
+(`"giac 2.0.0, (c) B. Parisse and R. De Graeve, …"`, whose full text is
+`to_julia(invoke_cmd(:version))`). Report it next to a result for provenance.
+"""
+function giac_version()::VersionNumber
+    s = to_julia(invoke_cmd(:version))
+    m = match(r"giac (\d+\.\d+(?:\.\d+)?)", s)
+    m === nothing && throw(GiacError("unexpected GIAC version banner: $s", :eval))
+    return VersionNumber(m.captures[1])
+end
+
 # =============================================================================
 # Note: Calculus and Algebra functions removed (Feature 021)
 # =============================================================================
