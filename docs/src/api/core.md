@@ -58,6 +58,8 @@ Giac.matrix_properties
 assuming
 with_settings
 giac_settings
+assumptions
+Giac.Assumptions
 ```
 
 ### Function Syntax for @giac_var

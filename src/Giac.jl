@@ -105,6 +105,8 @@ include("equations.jl")
 include("collect.jl")
 # Assumptions for one block, and the settings that change results
 include("assuming.jl")
+# What GIAC assumes of a variable, as a structured record
+include("assumptions_record.jl")
 
 
 # Include Constants submodule (053-symbolic-pi-constant)
@@ -129,7 +131,7 @@ export @giac_var, @giac_several_vars, @giac_matrix
 export ∇, jacobian, hessian
 export lhs, rhs, isolate
 export taylor, collect_terms
-export assuming, with_settings, giac_settings
+export assuming, with_settings, giac_settings, assumptions
 export @exact
 
 # Command invocation (009-commands-submodule)

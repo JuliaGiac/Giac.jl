@@ -16,6 +16,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   concurrent use guarantees and what is shared (point 8), and a section on
   passing an input unevaluated with `quote` and applying each step
   explicitly (point 3).
+- **`assumptions(x)` reads what GIAC assumes of a variable as a structured
+  record** (`Giac.Assumptions`), instead of the string `about(x)` prints:
+  the domain, the union of intervals with open or closed ends, the excluded
+  points, or the value of an assigned variable, with GIAC's record kept in
+  `raw` (MathInterchange's feedback, point 6). It holds only what reached
+  GIAC; a condition GIAC does not keep, such as `x != 3`, does not appear.
 
 - **Equations as values**, ported from Kahli Burke's `ergonomics` branch
   (step 4b of the port). `lhs(eq)` and `rhs(eq)` give the sides of `a ~ b`;
