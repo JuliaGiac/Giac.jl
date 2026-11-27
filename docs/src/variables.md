@@ -246,6 +246,23 @@ The record holds only what reached GIAC. GIAC keeps no trace of some
 conditions, such as `x != 3`, so comparing the record with the premises you
 gave tells whether each of them was applied.
 
+### Fresh identifiers
+
+A name can be captured on the Giac side: by a value given with `:=`, by an
+assumption, by a GIAC command or constant (`i`, `e`, `pi`, `D`), or, for a name
+starting with `_`, by a physical unit. Code that translates its own variables
+to Giac (an adapter, a rewriting engine) can use names that nothing captures:
+
+```julia
+is_free_identifier("D")      # false: GIAC's differential operator
+u = fresh_identifier()       # giacjl_fresh_1, checked free
+with_fresh_identifiers(2) do a, b
+    Giac.Commands.expand((a + b)^2)    # a and b are purged afterwards
+end
+```
+
+`isapprox` uses them for its temporary variables.
+
 ### Assumptions for one block: `assuming`
 
 GIAC's assumptions are global: `assume(x > 0)` holds for everything evaluated

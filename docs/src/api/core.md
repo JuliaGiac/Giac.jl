@@ -60,6 +60,9 @@ with_settings
 giac_settings
 assumptions
 Giac.Assumptions
+is_free_identifier
+fresh_identifier
+with_fresh_identifiers
 ```
 
 ### Function Syntax for @giac_var
