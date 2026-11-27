@@ -571,6 +571,21 @@ end
         @test Giac._score_help_match("polynomial", help_result) == 2
         @test Giac._score_help_match("POLYNOMIAL", help_result) == 0  # Query must be lowercase
     end
+
+    @testset "invalid UTF-8 scores 0 with a warning naming the command" begin
+        bad = String(UInt8[0x61, 0xe9, 0x62])  # "a\xe9b": a Latin-1 é
+        help_result = Giac.HelpResult("bogus", bad, String[], String[])
+        @test (@test_logs (:warn, r"bogus") Giac._score_help_match("a", help_result)) == 0
+    end
+end
+
+@testset "_clean_help_string decodes Latin-1 bytes" begin
+    # GIAC's help tables can carry Latin-1 text; it must come back as valid UTF-8
+    s = Giac._clean_help_string(String(UInt8[0x22, 0x63, 0x61, 0x66, 0xe9, 0x22]))  # "\"caf\xe9\""
+    @test isvalid(s)
+    @test s == "café"
+    @test Giac._clean_help_string("\"déjà\"") == "déjà"  # valid UTF-8 is kept as is
+    @test Giac._score_help_match("caf", Giac.HelpResult("x", s, String[], String[])) == 2
 end
 
 # ============================================================================

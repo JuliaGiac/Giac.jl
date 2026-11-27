@@ -399,6 +399,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **The warning about invalid UTF-8 in a command's help text no longer
   fails**: it read `help_result.name`, while the field is `command`, so the
   warning itself threw (`FieldError`) instead of reporting the command.
+- **Help text with Latin-1 bytes is decoded**: some GIAC builds return help
+  tables with bytes that are not valid UTF-8 (402 such commands on the
+  Julia 1.10 CI). `giac_help` now reads each such byte as Latin-1, so the
+  text is valid UTF-8 and `search_commands_by_description` searches it
+  instead of skipping it.
 - **`isapprox` no longer depends on fixed temporary names**: a value bound to
   `giacjl_isapprox_t1` changed its answer. It now uses fresh identifiers,
   purged afterwards.

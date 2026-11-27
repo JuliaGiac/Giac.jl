@@ -765,15 +765,33 @@ end
 Clean up a GIAC help string by removing outer quotes and unescaping.
 """
 function _clean_help_string(s::String)::String
+    # GIAC's help tables can carry Latin-1 bytes; read any byte that is not
+    # valid UTF-8 as Latin-1 so the text can be searched and lowercased
+    isvalid(s) || (s = _latin1_fallback(s))
     # Remove outer quotes if present
     if startswith(s, '"') && endswith(s, '"') && length(s) >= 2
-        s = s[2:end-1]
+        s = String(chop(s; head = 1, tail = 1))
     end
     # Unescape common escape sequences
     s = replace(s, "\\n" => "\n")
     s = replace(s, "\\\"" => "\"")
     s = replace(s, "\\\\" => "\\")
     return s
+end
+
+# Keep the valid UTF-8 characters; decode each byte of an invalid one as Latin-1.
+function _latin1_fallback(s::String)::String
+    io = IOBuffer()
+    for c in s
+        if isvalid(c)
+            print(io, c)
+        else
+            for b in codeunits(string(c))
+                print(io, Char(b))
+            end
+        end
+    end
+    return String(take!(io))
 end
 
 """
