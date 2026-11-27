@@ -24,7 +24,7 @@ _inexact(what) = throw(ArgumentError(
 
 _isnumber(a) = a isa Number
 
-function _from_leaf(g::GiacExpr, symbols, exact::Bool)
+function _from_leaf(g::GiacExpr, symbols, exact::Bool, strict::Bool)
     t = Giac.giac_type(g)
     if t == Giac.GenTypes.INT || t == Giac.GenTypes.ZINT
         n = Giac.to_julia(g)
@@ -36,14 +36,15 @@ function _from_leaf(g::GiacExpr, symbols, exact::Bool)
         exact && _inexact("the float $(string(g))")
         return Giac.to_julia(g)
     elseif t == Giac.GenTypes.CPLX
-        re = _from(Giac.real_part(g), symbols, exact)
-        im_ = _from(Giac.imag_part(g), symbols, exact)
+        re = _from(Giac.real_part(g), symbols, exact, strict)
+        im_ = _from(Giac.imag_part(g), symbols, exact, strict)
         return re + im_ * im
     elseif t == Giac.GenTypes.IDNT
         name = string(g)
         haskey(symbols, name) && return symbols[name]
         name == "pi" && return SU.term(identity, π)     # a term, so that 2π is not folded
         name == "i" && return im
+        strict && throw(ArgumentError("the Giac name `$name` is not in `symbols` (strict_symbols = true)"))
         sym = SU.Sym{SU.SymReal}(Symbol(name); type = Real)
         symbols[name] = sym
         return sym
@@ -67,10 +68,10 @@ _simplest(q::Rational{BigInt}) = isone(denominator(q)) ? _simplest(numerator(q))
 _simplest(n::BigInt) = typemin(Int) <= n <= typemax(Int) ? Int(n) : n
 _simplest(x) = x
 
-function _from(g::GiacExpr, symbols, exact::Bool)
-    Giac.iscall(g) || return _from_leaf(g, symbols, exact)
+function _from(g::GiacExpr, symbols, exact::Bool, strict::Bool = false)
+    Giac.iscall(g) || return _from_leaf(g, symbols, exact, strict)
     op = Giac.operation(g)
-    args = [_from(a, symbols, exact) for a in Giac.arguments(g)]
+    args = [_from(a, symbols, exact, strict) for a in Giac.arguments(g)]
     if !(op isa Function)
         exact && _inexact("the Giac function $(Giac.symb_funcname(g))")
         return SU.term(op, args...)
@@ -93,7 +94,7 @@ function _from(g::GiacExpr, symbols, exact::Bool)
 end
 
 """
-    to_symbolicutils(g::GiacExpr; symbols = Dict{String, Any}(), exact = true)
+    to_symbolicutils(g::GiacExpr; symbols = Dict{String, Any}(), exact = true, strict_symbols = false)
 
 `g` as a SymbolicUtils expression, with no Symbolics needed. Numbers are exact: `Int` or
 `BigInt`, `Rational{BigInt}` for fractions (`inv(2)` is `1//2`). Radicals stay unevaluated
@@ -101,12 +102,13 @@ end
 term so that arithmetic does not fold `2π` into a float, `exp(1)` stays a term and `i` is `im`.
 
 `symbols` maps Giac names to the SymbolicUtils symbols to use; a name not in it becomes a
-`Real` symbol of the same name (added to `symbols`). With `exact = true`, a float or a function
+`Real` symbol of the same name (added to `symbols`), or, with `strict_symbols = true`, is an
+`ArgumentError`: an identifier the caller did not expect came back. With `exact = true`, a float or a function
 outside the elementary ones is an `ArgumentError`; `exact = false` accepts them.
 """
 function Giac.to_symbolicutils(g::GiacExpr; symbols::AbstractDict = Dict{String, Any}(),
-                               exact::Bool = true)
-    return GC.@preserve g _from(g, symbols, exact)
+                               exact::Bool = true, strict_symbols::Bool = false)
+    return GC.@preserve g _from(g, symbols, exact, strict_symbols)
 end
 
 # ---------------------------------------------------------------------------------------------

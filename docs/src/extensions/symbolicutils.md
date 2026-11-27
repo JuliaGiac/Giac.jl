@@ -37,7 +37,9 @@ to_giac((0 < x) & (x <= 10); names = Dict(x => "v"))       # (v>0) and (10>=v)
 
 `symbols` maps Giac names to the SymbolicUtils symbols to use (for instance
 your own fresh names). A name not in it becomes a `Real` symbol of the same
-name. With `exact = true`, the default, a GIAC float or a function outside the
+name; with `strict_symbols = true` it is an `ArgumentError` instead, for a
+caller to whom an identifier outside its request means something unexpected
+came back. With `exact = true`, the default, a GIAC float or a function outside the
 elementary ones (such as `Gamma`) is an `ArgumentError`; `exact = false`
 accepts them.
 

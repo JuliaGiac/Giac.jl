@@ -53,6 +53,12 @@ const SU = SymbolicUtils
         # a name the caller did not map becomes a SymbolicUtils symbol of the same name
         w = to_symbolicutils(giac_eval("w"))
         @test SU.issym(w) && string(w) == "w"
+        # unless strict_symbols asks for an error (an identifier outside the request)
+        @test_throws ArgumentError to_symbolicutils(giac_eval("w") + v; symbols = Dict("v" => x),
+                                                    strict_symbols = true)
+        mapped = Dict{String, Any}("v" => x)
+        @test isequal(to_symbolicutils(v + 1; symbols = mapped, strict_symbols = true), x + 1)
+        @test collect(keys(mapped)) == ["v"]                       # nothing added
     end
 
     @testset "to Giac" begin
