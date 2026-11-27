@@ -31,14 +31,14 @@ end
 Base.isempty(a::Assumptions) =
     a.domain === nothing && isempty(a.intervals) && isempty(a.excluded) && a.value === nothing
 
+# `Assumptions(integer, [2, +infinity[)`: the domain, then the union of intervals
 function Base.show(io::IO, a::Assumptions)
     parts = String[]
     a.domain === nothing || push!(parts, string(a.domain))
-    for i in a.intervals
-        push!(parts, string(i.lo_closed ? "[" : "]", i.lo, ", ", i.hi, i.hi_closed ? "]" : "["))
-    end
+    isempty(a.intervals) || push!(parts, join((string(i.lo_closed ? "[" : "]", i.lo, ", ", i.hi,
+                                                      i.hi_closed ? "]" : "[") for i in a.intervals), " ∪ "))
     a.value === nothing || push!(parts, "value $(a.value)")
-    print(io, "Assumptions(", isempty(parts) ? "none" : join(parts, " ∪ "), ")")
+    print(io, "Assumptions(", isempty(parts) ? "none" : join(parts, ", "), ")")
 end
 
 # An assumption record is a vector `assume[...]` whose first element is the domain.

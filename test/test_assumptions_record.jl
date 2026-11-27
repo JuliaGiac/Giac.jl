@@ -60,6 +60,20 @@
         C.purge(f)
     end
 
+    @testset "display" begin
+        @giac_var p q n m u
+        @test sprint(show, assumptions(p)) == "Assumptions(none)"
+        C.assume((q > 0) & (q <= 10))
+        @test sprint(show, assumptions(q)) == "Assumptions(]0, 10])"
+        @giac_var n::(integer, >=(2))
+        @test sprint(show, assumptions(n)) == "Assumptions(integer, [2, +infinity[)"
+        C.assume((m < 0) | (m > 1))
+        @test sprint(show, assumptions(m)) == "Assumptions(]-infinity, 0[ ∪ ]1, +infinity[)"
+        giac_eval("u:=7")
+        @test sprint(show, assumptions(u)) == "Assumptions(value 7)"
+        C.purge(u)
+    end
+
     @testset "a condition GIAC does not record is not in the record" begin
         # GIAC keeps no trace of x != 3: the record shows what reached it
         @giac_var h
