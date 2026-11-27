@@ -62,6 +62,28 @@ heuristic. Lines starting with `Warning` are `WARNING`, lines starting with
 `Error` are `ERROR`, and everything else is `INFO`. The wording of these
 messages can change between GIAC versions; match on `raw` or `log` with care.
 
+## What a message says: `kind`
+
+Each diagnostic has a `kind`, classified against the messages GIAC is known to
+write, so that a caller need not match the text:
+
+| `kind` | GIAC's message (example) | The value is right… |
+|---|---|---|
+| `:estimate` | `∫ ~= 0.272198261288` | (an estimate of a value GIAC left unevaluated) |
+| `:assumption` | `integration of abs or sign assumes constant sign by intervals`, then `Check [abs(x-1)]` | only under what is assumed |
+| `:choice` | `choosing root of [...] at parameters values [0]`, `need to choose a branch` | only for the choice made |
+| `:unchecked` | `No checks were made for singular points of antiderivative …` | if the unchecked step holds |
+| `:interpretation` | `argument is not an equation, solving x^3+a*x+b=0` | for the input as GIAC read it |
+| `:info`, `:warning`, `:error` | anything else, by level | |
+
+`:assumption`, `:choice` and `:unchecked` qualify the value: a caller certifying a
+result should treat them as open conditions. An `:estimate` is evidence only.
+
+```julia
+out = evaluate_with_diagnostics(() -> integrate(abs(x - 1), x, 0, 3))
+[d.kind for d in out.diagnostics]    # [:estimate, :assumption, :assumption]
+```
+
 ## What is covered
 
 The capture is installed on the GIAC context itself, inside the C++ wrapper,

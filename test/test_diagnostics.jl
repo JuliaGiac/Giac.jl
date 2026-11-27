@@ -32,6 +32,23 @@ const SERRET_HINT = "0.272198261288"
         @test DiagnosticLevel.INFO isa DiagnosticLevel.T
     end
 
+    @testset "what a message says: kind" begin
+        kinds(log) = [d.kind for d in Giac._parse_diagnostics(log)]
+        # GIAC's messages as it writes them (observed with GIAC 2.0)
+        @test kinds("// ∫ ~= 0.272198261288\n") == [:estimate]
+        @test kinds("Warning, integration of abs or sign assumes constant sign by intervals " *
+                    "(correct if the argument is real):\nCheck [abs(x-1)]\n") == [:assumption, :assumption]
+        @test kinds("No checks were made for singular points of antiderivative -exp(-x) for " *
+                    "definite integration in [0,+infinity]\n") == [:unchecked]
+        @test kinds("Warning, argument is not an equation, solving x^3+a*x+b=0\n") == [:interpretation]
+        @test kinds("choosing root of [1,0,-184,0,9272] at parameters values [0]\n") == [:choice]
+        @test kinds("Warning, need to choose a branch for the root of a polynomial with parameters\n") == [:choice]
+        @test kinds("Trying integration by part\nWarning, something new\nError: Bad Argument Value\n") ==
+              [:info, :warning, :error]
+        # the 3-argument constructor classifies too
+        @test GiacDiagnostic(DiagnosticLevel.INFO, "∫ ~= 1", "// ∫ ~= 1").kind === :estimate
+    end
+
     # Both ways of capturing are tested: the wrapper's (libgiac_julia_jll 0.6 and later) and the
     # fallback that redirects stderr, used with an older wrapper.
     backends = Giac._log_capture_available() ? (:wrapper, :stderr) : (:stderr,)

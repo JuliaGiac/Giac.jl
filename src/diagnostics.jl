@@ -32,6 +32,20 @@ One line GIAC wrote to its log stream during an evaluation.
 - `level::DiagnosticLevel.T`: severity, inferred from the text (see below)
 - `text::String`: the message, without GIAC's `// ` comment prefix
 - `raw::String`: the line exactly as GIAC wrote it
+- `kind::Symbol`: what the message says, for the messages GIAC is known to write:
+  - `:estimate`: a numeric estimate of a result GIAC leaves unevaluated (`∫ ~= 0.27…`);
+  - `:assumption`: GIAC assumed something to compute the result ("integration of abs or
+    sign assumes constant sign by intervals", and the `Check [...]` line after it);
+  - `:choice`: GIAC chose among several possibilities ("choosing root of …", "need to
+    choose a branch");
+  - `:unchecked`: a step GIAC did not check ("No checks were made for singular points");
+  - `:interpretation`: GIAC read the input otherwise than written ("argument is not an
+    equation, solving …");
+  - otherwise `:info`, `:warning` or `:error`, as the level.
+
+  `:assumption`, `:choice` and `:unchecked` are the ones that qualify the value: the result is
+  right only under what the message states. The classification is maintained here against
+  GIAC's messages, so callers need not match text themselves.
 
 GIAC's log is free-form text, not a structured channel, so `level` is a
 heuristic: lines starting with `Warning` are `WARNING`, lines starting with
@@ -42,6 +56,26 @@ struct GiacDiagnostic
     level::DiagnosticLevel.T
     text::String
     raw::String
+    kind::Symbol
+end
+GiacDiagnostic(level::DiagnosticLevel.T, text::AbstractString, raw::AbstractString) =
+    GiacDiagnostic(level, String(text), String(raw), _diagnostic_kind(level, text))
+
+# What a message says, from the text GIAC writes (see `GiacDiagnostic`).
+const _DIAGNOSTIC_KINDS = (
+    (r"^∫ ~=", :estimate),
+    (r"assum(e|es|ing)\b|correct if", :assumption),
+    (r"choos(e|ing)\b", :choice),
+    (r"^no checks were made", :unchecked),
+    (r"is not an equation, solving", :interpretation),
+)
+function _diagnostic_kind(level::DiagnosticLevel.T, text::AbstractString)::Symbol
+    t = lowercase(text)
+    for (pattern, kind) in _DIAGNOSTIC_KINDS
+        occursin(pattern, t) && return kind
+    end
+    return level == DiagnosticLevel.WARNING ? :warning :
+           level == DiagnosticLevel.ERROR ? :error : :info
 end
 
 """
@@ -95,9 +129,11 @@ function _parse_diagnostics(log::AbstractString)::Vector{GiacDiagnostic}
         s = strip(raw)
         isempty(s) && continue
         text = startswith(s, "//") ? lstrip(chop(s; head = 2, tail = 0)) : s
-        push!(diagnostics,
-              GiacDiagnostic(_diagnostic_level(text), String(text),
-                             String(raw)))
+        level = _diagnostic_level(text)
+        # `Check [...]` details the message before it (the expressions an assumption is about)
+        kind = startswith(text, "Check [") && !isempty(diagnostics) ? diagnostics[end].kind :
+               _diagnostic_kind(level, text)
+        push!(diagnostics, GiacDiagnostic(level, String(text), String(raw), kind))
     end
     return diagnostics
 end

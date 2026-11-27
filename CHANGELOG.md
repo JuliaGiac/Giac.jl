@@ -268,9 +268,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   unevaluated while GIAC prints the estimate `// ∫ ~= 0.272198261288`.
   `evaluate_with_diagnostics(f)` runs `f()` and returns a `GiacEvalResult`
   with `value` (what `f` returned, unchanged), `diagnostics` (one
-  `GiacDiagnostic(level, text, raw)` per line, with `level` a
-  `DiagnosticLevel.T`: `INFO`, `WARNING` or `ERROR`) and `log` (the raw
-  text). `integrate` still returns a `GiacExpr`: the estimate is GIAC's hint,
+  `GiacDiagnostic(level, text, raw, kind)` per line, with `level` a
+  `DiagnosticLevel.T`: `INFO`, `WARNING` or `ERROR`, and `kind` what the
+  message says: `:estimate`, `:assumption`, `:choice`, `:unchecked`,
+  `:interpretation`, or `:info`/`:warning`/`:error`) and `log` (the raw
+  text). `:assumption`, `:choice` and `:unchecked` qualify the value. `integrate` still returns a `GiacExpr`: the estimate is GIAC's hint,
   not a requested numeric evaluation, and never becomes the value. The
   capture is installed on the C++ context by the wrapper, so it covers the
   `invoke_cmd` fast path (`apply_func1`/`apply_funcN`) as well as
