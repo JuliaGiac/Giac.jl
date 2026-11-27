@@ -527,6 +527,17 @@ numerator((x^3 - 1) / (x^2 - 1))     # x^2+x+1
 denominator((x^3 - 1) / (x^2 - 1))   # x+1
 ```
 
+## Diagnostics capture
+
+See [Capturing GIAC messages](../diagnostics.md) for a walkthrough.
+
+```@docs
+evaluate_with_diagnostics
+GiacEvalResult
+GiacDiagnostic
+DiagnosticLevel
+```
+
 ## Conversion Functions
 
 ```@docs

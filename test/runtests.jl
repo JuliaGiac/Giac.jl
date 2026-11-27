@@ -236,6 +236,11 @@ using LinearAlgebra
     include("test_extensions_threads.jl")
 
     # ============================================================================
+    # Diagnostics capture: GIAC log messages returned apart from the value
+    # ============================================================================
+    include("test_diagnostics.jl")
+
+    # ============================================================================
     # Doctests
     # Runs jldoctest blocks in Giac docstrings via Documenter.doctest
     # ============================================================================
