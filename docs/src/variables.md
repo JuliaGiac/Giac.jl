@@ -222,3 +222,55 @@ purge(x)
     purge(x)
     assume(x > 0)  # Works
     ```
+### Assumptions for one block: `assuming`
+
+GIAC's assumptions are global: `assume(x > 0)` holds for everything evaluated
+afterwards, until `purge(x)`. `assuming` puts conditions in force for one block
+and undoes them afterwards, even when the block throws:
+
+```julia
+using Giac.Commands: simplify, about
+@giac_var k n
+
+assuming(k > 0) do
+    simplify(sqrt(k^2))        # k
+end
+simplify(sqrt(k^2))            # abs(k): nothing is assumed any more
+
+assuming(k > 0, k < 1) do      # conditions on one variable combine
+    about(k)                   # the interval ]0, 1[
+end
+assuming(n => :integer) do     # a domain: :real, :integer, :complex, :rational
+    # ...
+end
+```
+
+The conditions add to what a variable was declared with (`@giac_var k::real`),
+and when the block ends every variable named in them gets back exactly the
+state GIAC held for it before. A condition GIAC already decides from those
+assumptions (`k > 0` for a positive `k`) is skipped, and one it finds false is
+an error. The GIAC lock is held for the whole block, so other tasks wait and
+none sees the temporary assumptions.
+
+## Settings that change results
+
+Some session settings change what a computation means: with `complex_mode` on,
+`simplify(sqrt(x^2))` gives `x`, which is wrong at `x = -2`. `giac_settings()`
+reads them as one record, to report next to a result, and `with_settings` sets
+some of them for one block, then puts every setting back:
+
+```julia
+giac_settings()
+# (complex_mode = false, approx_mode = false, angle_radian = true,
+#  complex_variables = false, epsilon = 1.0e-12, digits = 12)
+
+@giac_var x
+with_settings(complex_mode = false) do
+    Giac.Commands.simplify(sqrt(x^2))      # abs(x), whatever the session's setting
+end
+with_settings(digits = 30) do
+    Giac.Commands.evalf(pi)
+end
+```
+
+`assuming` also puts the settings back when its block ends.

@@ -46,6 +46,7 @@ using LinearAlgebra
     include("test_giac_var_decl.jl")
     include("test_giac_matrix.jl")
     include("test_taylor_collect.jl")
+    include("test_assuming.jl")
 
     # Multivar derivative operator tests (068-multivar-d-operator)
     include("test_differential.jl")
