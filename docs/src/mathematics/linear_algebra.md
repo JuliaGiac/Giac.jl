@@ -243,6 +243,135 @@ hessian(f, w)                    # [2*w2 2*w1; 2*w1 0]
 jacobian([w1 * w2, w1 + w2], w)  # [w2 w1; 1 1]
 ```
 
+## Matrices as symbols
+
+`@matsym` declares matrices as single symbols, of a given size, whose products
+do not commute: an `n × n` matrix `A` is one symbol, not `n²` entries, and `n`
+may stay a name. Expressions built from them are `MatExpr` values, kept in a
+canonical form (a sum of scalar coefficients times products of factors), so the
+identities of matrix algebra hold as the expressions are built. This is ported
+from Kahli Burke's `ergonomics` branch.
+
+```julia
+using Giac, LinearAlgebra
+@matsym A[n, n] B[n, n] P[n, n]::posdef Q[n, n]::orthogonal W[n, n]::skew x[n] b[n]
+
+(A * B)'                         # B'*A'
+inv(A * B)                       # inv(B)*inv(A)
+A * B == B * A                   # false
+(A + B)^2                        # A^2 + B^2 + A*B + B*A
+inv(A + B) * (A + B)             # I: an inverse of a sum is kept whole, and cancels
+P' == P, W' == -W                # (true, true)
+Q' * Q                           # I
+size(x)                          # (:n, 1): x[n] is a column
+x' * A' * P * x + x' * P * A * x # 2*x'*P*A*x: a 1×1 term is its own transpose
+```
+
+A size is a number, a name (`n`; `$k` for the value of a Julia variable `k`), or
+a product of them (`m*n`). The properties after `::` (one, or a tuple of them)
+are `symmetric`, `skew`, `diagonal` (symmetric), `orthogonal`, `posdef` and
+`negdef` (symmetric and invertible), and `invertible`. Products check their
+sizes and throw a `DimensionMismatch`; `I` takes the size it is added to
+(`A + I`, `s * I`).
+
+### Trace and determinant
+
+`tr` and `det` give scalars, `GiacExpr` values that combine with other scalars
+in Giac. A trace is the same for every cyclic rotation of a product and for its
+transpose; a determinant of a product of square factors splits, and anything
+else is kept whole. A trace or determinant that does not reduce is shown as
+such.
+
+```julia
+tr(A * B) - tr(B * A)            # 0
+tr(A * B * inv(A))               # tr(B)
+tr(W)                            # 0, for a skew W
+det(2 * A * B)                   # det(A)*det(B)*2^n
+det(inv(A))                      # 1/det(A)
+```
+
+### Explicit matrices, blocks and quadratic forms
+
+`substitute(M, A => entries, …)` gives the explicit matrix of an expression (or
+the value of a trace or determinant) for given entries of each symbol; size names
+take the sizes given. `[A B; C D]` with symbolic blocks is a `Matrix{MatExpr}`,
+with products, `transpose`, and `inv` and `det` of a 2×2 block matrix by the
+Schur complement. `quadratic_form(f, x)` is the symmetric `S` with `f = xᵀSx`.
+
+```julia
+substitute(A * A', A => [1 2; 3 4])   # GiacExpr[5 11; 11 25]
+inv([A B; 0 Q])                       # MatExpr[inv(A) -inv(A)*B*Q'; 0 Q']
+det([A B; 0 Q])                       # det(A)*det(Q)
+quadratic_form(x' * A' * P * x + x' * P * A * x, x)   # A'*P + P*A
+```
+
+A `MatExpr` prints as plain text, and in LaTeX for notebooks, with the
+coefficients written by Giac's `latex`:
+
+```julia
+sprint(show, MIME("text/latex"), inv(A * B)' + 2 * Q' * B)
+# "$$A^{-\top} B^{-\top} + 2 Q^{\top} B$$"
+```
+
+### Kronecker products and vectorization
+
+`kron(A, B)` is the Kronecker product `A ⊗ B` of symbolic matrices, of size
+`(m·p) × (n·q)`. It is bilinear, and the mixed product `(A⊗B)(C⊗D) = AC⊗BD`,
+`(A⊗B)ᵀ = Aᵀ⊗Bᵀ`, `(A⊗B)⁻¹ = A⁻¹⊗B⁻¹`, `tr(A⊗B) = tr A tr B` and
+`det(A⊗B) = (det A)ᵐ (det B)ⁿ` are applied as expressions are built.
+
+`vectorize(E, X)` writes an expression `E` linear in the matrix symbol `X` as
+the linear system of its entries, `vec E = K vec X + vec R`, from
+`vec(UXV) = (Vᵀ ⊗ U) vec X`. A Lyapunov equation `AᵀP + PA = -Q` becomes a
+linear system, which `substitute` makes explicit:
+
+```julia
+@matsym C[m, m]
+kron(A, C) * kron(B, C)          # kron(A*B, C^2)
+tr(kron(A, C))                   # tr(A)*tr(C)
+
+K, R = vectorize(A' * P + P * A, P)   # K = kron(A', I) + kron(I, A'), R = 0
+K₂ = substitute(K, A => GiacExpr[0 1; -2 -3])
+reshape(K₂ \ (-vec(GiacExpr[1 0; 0 1])), 2, 2)   # GiacExpr[5/4 1/4; 1/4 1/4]
+```
+
+`vec(X)` is the vector symbol `vec X`, and `vech(P)` the entries of a symmetric
+`P` on and below its diagonal. With `unknowns = :vech`, `vectorize` gives the
+`n(n+1)/2` system for a symmetric unknown, `K = D⁺ K₀ D`, through the
+duplication matrix `Giac.duplication(n)` and its left inverse
+`Giac.duplication_plus(n)`; a transposed unknown goes through the commutation
+matrix `Giac.commutation(m, n)`, with `vec(Xᵀ) = K(m, n) vec X`.
+
+### Matrix calculus
+
+`differential` applies the product rule to symbolic matrices, in terms of the
+differentials `dX` of their symbols: `d(X⁻¹) = -X⁻¹ dX X⁻¹`,
+`d tr W = tr dW`, `d det M = det M tr(M⁻¹ dM)`. With symbols given, only those
+vary. Scalar variables and matrix symbols can be mixed. `∇`, `jacobian` and
+`hessian` (the functions for arrays above) take matrix symbols too, and are read
+off the differential; `derivative(f, X => Ẋ)` is the derivative of `f` when `X`
+changes at the rate `Ẋ`.
+
+```julia
+@matsym X[n, n]
+@giac_var u
+differential(X * A)              # X*dA + dX*A: every symbol varies
+differential(inv(X))             # -inv(X)*dX*inv(X)
+differential(det(X))             # det(X)*tr(inv(X)*dX)
+differential(tr(A * X), X)       # tr(A*dX)
+differential(u^2 + tr(A * X), u, X)   # 2*u*du+tr(A*dX)
+
+∇(tr(A * X), X)                  # A'
+∇(log(det(X)), X)                # inv(X')
+∇(x' * A * x + b' * x, x)        # b + A'*x + A*x
+jacobian(A * x, x)               # A
+hessian(x' * A * x, x)           # A + A'
+
+# the derivative of a Lyapunov function along the trajectories of ẋ = Ax
+V̇ = derivative(x' * P * x, x => A * x)   # 2*x'*P*A*x
+quadratic_form(V̇, x)                    # A'*P + P*A
+```
+
 ## Determinant
 
 Compute the determinant using `det`:
@@ -463,6 +592,11 @@ A^2
 | `eigvals(A)`, `eigen(A)`, `eigvecs(A)` | Spectrum, by Giac's Jordan form |
 | `rank(A)`, `nullspace(A)`, `exp(A)` | Rank, null-space basis, matrix exponential |
 | `∇(f, x)`, `jacobian(f, x)`, `hessian(f, x)` | Gradient, Jacobian, Hessian |
+| `@matsym A[n, n] x[n]` | Symbolic matrices, whose products do not commute |
+| `tr(M)`, `det(M)`, `substitute(M, A => entries)` | Of a `MatExpr`: trace, determinant, explicit matrix |
+| `quadratic_form(f, x)` | The symmetric `S` with `f = xᵀSx` |
+| `kron(A, B)`, `vectorize(E, X)`, `vec(X)`, `vech(P)` | Kronecker products and vectorization |
+| `differential(M)`, `derivative(f, X => Ẋ)` | Matrix calculus with differentials |
 
 ## Notes
 

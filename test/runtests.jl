@@ -25,6 +25,9 @@ using LinearAlgebra
     include("test_matrix_iteration.jl")
     include("test_array_algebra.jl")
     include("test_equations.jl")
+    include("test_matrix_symbols.jl")
+    include("test_kronecker.jl")
+    include("test_matrix_calculus.jl")
     include("test_memory.jl")
 
     # Command invocation tests (003-giac-commands)

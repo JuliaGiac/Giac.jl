@@ -384,6 +384,26 @@ jacobian
 hessian
 ```
 
+## Symbolic matrices
+
+Matrices as single symbols, with products that do not commute (see
+[Linear Algebra](../mathematics/linear_algebra.md#Matrices-as-symbols)).
+
+```@docs
+@matsym
+MatExpr
+Giac.MatrixSymbol
+Giac.Factor
+quadratic_form
+vectorize
+vech
+Giac.commutation
+Giac.duplication
+Giac.duplication_plus
+differential
+derivative
+```
+
 ## Equations
 
 ```@docs

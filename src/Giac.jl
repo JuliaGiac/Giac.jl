@@ -104,6 +104,11 @@ include("Commands.jl")
 include("array_algebra.jl")
 # Equations as values: lhs, rhs, isolate, arithmetic on both sides
 include("equations.jl")
+# Symbolic matrices (@matsym), Kronecker products and vectorization, matrix calculus
+# (ported from Kahli Burke's `ergonomics` branch)
+include("matrix_symbols.jl")
+include("kronecker.jl")
+include("matrix_calculus.jl")
 # Taylor polynomials and grouping by monomials (ported from the ergonomics branch)
 include("collect.jl")
 # Assumptions for one block, and the settings that change results
@@ -136,6 +141,7 @@ export @giac_var, @giac_several_vars, @giac_matrix
 export ∇, jacobian, hessian
 export lhs, rhs, isolate
 export taylor, collect_terms
+export @matsym, MatExpr, quadratic_form, differential, derivative, vectorize, vech
 export assuming, with_settings, giac_settings, assumptions
 export fresh_identifier, with_fresh_identifiers, is_free_identifier
 export @exact
@@ -391,7 +397,9 @@ function Base.show(io::IO, ::MIME"text/latex", expr::GiacExpr)
     latex_result = invoke_cmd(:latex, expr)
     latex_str = string(latex_result)
     if length(latex_str) > 2
-        print(io, "\$\$", latex_str[2:end-1], "\$\$")  # Remove surrounding quotes from GIAC's LaTeX output
+        # Remove surrounding quotes from GIAC's LaTeX output; a trace or determinant of symbolic
+        # matrices is written as such (see matrix_symbols.jl)
+        print(io, "\$\$", _atom_tex(latex_str[2:end-1]), "\$\$")
     else
         # Fallback to default display if LaTeX conversion fails
         print(io, string(expr))
@@ -428,7 +436,9 @@ function Base.show(io::IO, ::MIME"text/latex", m::GiacMatrix)
     latex_result = invoke_cmd(:latex, matrix_expr)
     latex_str = string(latex_result)
     if length(latex_str) > 2
-        print(io, "\$\$", latex_str[2:end-1], "\$\$")  # Remove surrounding quotes from GIAC's LaTeX output
+        # Remove surrounding quotes from GIAC's LaTeX output; a trace or determinant of symbolic
+        # matrices is written as such (see matrix_symbols.jl)
+        print(io, "\$\$", _atom_tex(latex_str[2:end-1]), "\$\$")
     else
         # Fallback to default display if LaTeX conversion fails
         print(io, string(m))

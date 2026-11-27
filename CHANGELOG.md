@@ -15,6 +15,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   ArrayLayouts the lazy zeros it builds only for `Number` types). The
   partition lines in LaTeX will come with the typesetting.
 
+- **Symbolic matrices, Kronecker products and matrix calculus**, ported from
+  Kahli Burke's `ergonomics` branch. `@matsym A[n, n] P[n, n]::posdef x[n]`
+  declares matrices as single symbols, of sizes that may be names, whose
+  products do not commute; a `MatExpr` is kept canonical, so
+  `(A*B)' == B'*A'`, `inv(A*B) == inv(B)*inv(A)`, `P' == P`, `Q'*Q == I` for
+  an orthogonal `Q`, and a 1×1 term equals its transpose. `tr` and `det`
+  give scalars (`tr(A*B) == tr(B*A)`, `det(2A*B) == 2^n*det(A)*det(B)`),
+  `substitute(M, A => entries)` the explicit matrix, `[A B; C D]` block
+  matrices with `inv` and `det` by the Schur complement, and
+  `quadratic_form(f, x)` the matrix of a quadratic form. `kron` of symbolic
+  matrices, with the mixed-product rule; `vectorize(E, X)` turns a linear
+  matrix equation (Lyapunov, Sylvester) into the linear system of its
+  entries, with `vec`, `vech` and the commutation and duplication matrices.
+  `differential` applies the product rule (`d(X⁻¹) = -X⁻¹ dX X⁻¹`,
+  `d det M = det M tr(M⁻¹ dM)`), also to scalars in scalar variables;
+  `∇`, `jacobian` and `hessian` take matrix symbols, and
+  `derivative(f, x => A*x)` is the derivative along a direction. A
+  `MatExpr` shows as plain text and as LaTeX. Not ported: the rules engine
+  (`simplest`, `equivalent`, `rewrite`, `matrix_identities`, the sign facts
+  recorded for `posdef` and `orthogonal` symbols) and the textbook LaTeX
+  typesetting. New exported names: `@matsym`, `MatExpr`, `quadratic_form`,
+  `differential`, `derivative`, `vectorize`, `vech`.
+
 - **Fresh identifiers** (MathInterchange's feedback, point 4):
   `is_free_identifier(name)` checks that no value, assumption, GIAC command,
   reserved constant (`i`, `e`, `pi`, `D`, …) or physical unit (`_name`)
