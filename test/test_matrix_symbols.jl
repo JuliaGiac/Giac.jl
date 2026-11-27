@@ -89,4 +89,21 @@ using LinearAlgebra
         d2 = det(I + F * G)
         @test string(d1) != string(d2)
     end
+    @testset "a user variable cannot capture a trace or determinant" begin
+        # the names standing for traces and determinants are fresh: values bound to names
+        # of the same shape do not leak into them
+        for k in 1:200
+            giac_eval("mxat$(k):=7"); giac_eval("mxat_$(k):=7")
+        end
+        try
+            @matsym U[n, n] V[n, n]
+            t = tr(U * V * U)
+            @test Sh(t) == "tr(U^2*V)"
+            @test !occursin("7", S(t)) && !occursin("7", S(det(U * V)))
+        finally
+            for k in 1:200
+                giac_eval("purge(mxat$(k))"); giac_eval("purge(mxat_$(k))")
+            end
+        end
+    end
 end

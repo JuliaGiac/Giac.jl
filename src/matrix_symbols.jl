@@ -590,7 +590,8 @@ function _atom(kind::Symbol, payload, plain::String, tex::String)
                                                           for s in _symbols_in(payload)]), ";")
     name = lock(_ATOMS_LOCK) do
         get!(_ATOM_BY_KEY, key) do
-            n = "mxat" * string(length(_ATOMS) + 1)
+            # a fresh name, so no value or assumption of the user's captures it
+            n = string(fresh_identifier("mxat"))
             _ATOMS[n] = (kind, payload, plain, tex)
             n
         end
@@ -613,15 +614,16 @@ _det_atom(M::MatExpr) = _atom(:det, M, "det(" * _plain(M) * ")", "\\det\\left(" 
 function _atom_tex(s::AbstractString)
     occursin("mxat", s) || return s
     return lock(_ATOMS_LOCK) do
-        replace(s, r"\\mathrm\{(mxat\d+)\}" => m -> begin
-            name = chop(m; head = 8, tail = 1)
+        # GIAC writes the name `mxat_12` as `\mathrm{mxat}_{12}`
+        replace(s, r"\\mathrm\{mxat\}_\{(\d+)\}" => m -> begin
+            name = "mxat_" * match(r"\d+", m).match
             haskey(_ATOMS, name) ? "{" * _ATOMS[name][4] * "}" : m
         end)
     end
 end
 function _atom_plain(s::AbstractString)
     occursin("mxat", s) || return s
-    return lock(() -> replace(s, r"\bmxat\d+\b" => m -> haskey(_ATOMS, m) ? _ATOMS[m][3] : m), _ATOMS_LOCK)
+    return lock(() -> replace(s, r"\bmxat_\d+\b" => m -> haskey(_ATOMS, m) ? _ATOMS[m][3] : m), _ATOMS_LOCK)
 end
 
 _dim_expr(d::Dim) = d isa Int ? convert(GiacExpr, d) : _matsym_identifier(string(d))
