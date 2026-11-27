@@ -107,6 +107,8 @@ include("collect.jl")
 include("assuming.jl")
 # What GIAC assumes of a variable, as a structured record
 include("assumptions_record.jl")
+# Fresh identifiers that nothing captures
+include("fresh.jl")
 
 
 # Include Constants submodule (053-symbolic-pi-constant)
@@ -132,6 +134,7 @@ export ∇, jacobian, hessian
 export lhs, rhs, isolate
 export taylor, collect_terms
 export assuming, with_settings, giac_settings, assumptions
+export fresh_identifier, with_fresh_identifiers, is_free_identifier
 export @exact
 
 # Command invocation (009-commands-submodule)

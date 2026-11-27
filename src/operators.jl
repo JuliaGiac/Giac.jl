@@ -711,16 +711,18 @@ end
 # expressions are not polynomial in those parts.
 function _monomial_coefficients(a::GiacExpr, b::GiacExpr)
     atoms = unique!(vcat(_giac_list(invoke_cmd(:lvar, a)), _giac_list(invoke_cmd(:lvar, b))))
-    # Names must not start with `_`: Giac reads `_name` as a physical unit.
-    fresh = [giac_eval("giacjl_isapprox_t$i") for i in eachindex(atoms)]
-    polys = map((a, b)) do e
-        isempty(atoms) && return e
-        invoke_cmd(:expand, invoke_cmd(:subst, e, atoms, fresh))
+    # fresh variables that no value or assumption of the session captures
+    return with_fresh_identifiers(length(atoms); prefix = "giacjl_isapprox") do fresh...
+        fresh = collect(GiacExpr, fresh)
+        polys = map((a, b)) do e
+            isempty(atoms) && return e
+            invoke_cmd(:expand, invoke_cmd(:subst, e, atoms, fresh))
+        end
+        ca = _coefficient_dict(polys[1], fresh)
+        cb = _coefficient_dict(polys[2], fresh)
+        (ca === nothing || cb === nothing) && return (nothing, nothing)
+        return ca, cb
     end
-    ca = _coefficient_dict(polys[1], fresh)
-    cb = _coefficient_dict(polys[2], fresh)
-    (ca === nothing || cb === nothing) && return (nothing, nothing)
-    return ca, cb
 end
 
 function _coefficient_dict(p::GiacExpr, vars::Vector{GiacExpr},

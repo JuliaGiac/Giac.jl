@@ -9,6 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Fresh identifiers** (MathInterchange's feedback, point 4):
+  `is_free_identifier(name)` checks that no value, assumption, GIAC command,
+  reserved constant (`i`, `e`, `pi`, `D`, …) or physical unit (`_name`)
+  captures a name; `fresh_identifier(prefix)` returns a free name no other
+  call returns; `with_fresh_identifiers(f, n)` gives `n` of them to a block
+  and purges them afterwards.
+
 - **`giac_version()`** returns the version of the GIAC library as a
   `VersionNumber`, read from GIAC's `version()` banner (MathInterchange's
   feedback, point 7).
@@ -356,6 +363,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **`isapprox` no longer depends on fixed temporary names**: a value bound to
+  `giacjl_isapprox_t1` changed its answer. It now uses fresh identifiers,
+  purged afterwards.
 - **`giac_type` and `subtype` read the stored value** instead of printing
   the expression and evaluating the printed form again (ported from Kahli
   Burke's `ergonomics` branch). The printed form is not always the value: the
