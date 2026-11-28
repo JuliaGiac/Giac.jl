@@ -1708,6 +1708,49 @@ out = evaluate_with_diagnostics(context = ctx) do
 end
 ```
 
+## Through the extensions
+
+The capture holds for every extension: what an extension evaluates goes
+through GIAC's context like the rest, so wrapping the conversion and the
+computation keeps the value, in the extension's own type, and GIAC's messages:
+
+```julia
+using Giac, Symbolics
+@variables x
+out = evaluate_with_diagnostics() do
+    to_symbolics(Giac.Commands.integrate(to_giac(abs(x)), giac_eval("x")))
+end
+out.value          # a Symbolics expression: x^2/2 times sign(x)
+out.diagnostics    # :assumption, "integration of abs or sign assumes constant sign by intervals…"
+```
+
+| Extension | Wrap in `evaluate_with_diagnostics` |
+|---|---|
+| Symbolics, SymbolicUtils, SymPy, MathJSON | `to_giac`, the computation, and the conversion back |
+| OpenMath.jl | `Giac.from_openmath(o)`, which GIAC evaluates |
+| TermInterface, Nemo, LibPARI, BlockArrays | the computation that uses the converted values |
+| MCP server | nothing: the `giac_eval` tool returns the result, then a `GIAC messages:` block, also with an error |
+
+An exception leaves `evaluate_with_diagnostics` without a result; to keep the
+messages GIAC wrote before it, catch it inside the block:
+
+```julia
+out = evaluate_with_diagnostics() do
+    try
+        giac_eval("integrate(abs(t),t)")
+        giac_eval("inv([[1,2],[2,4]])")      # not invertible: an error
+    catch e
+        e
+    end
+end
+out.value          # the exception
+out.diagnostics    # what GIAC said about the integral before
+```
+
+GIAC's log is not always valid UTF-8 (some builds write Latin-1, and a syntax
+error used to quote freed memory): such bytes are read as Latin-1, so
+`text`, `raw` and `log` are always valid strings.
+
 ## Behaviour and limits
 
 - **Nesting.** Calls can be nested. An inner call returns its own messages,
