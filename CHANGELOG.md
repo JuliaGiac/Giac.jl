@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- **Ready for GIAC 2.1.0**: the compat admits GIAC_jll 200.100 (GIAC 2.1.0,
+  built on PARI 2.19; JLL versions are GIAC's ×100) and libgiac_julia_jll
+  0.6, both waiting for registration. With them, LibPARI 0.19 resolves too.
+  The test of `acosh`'s converted form follows the GIAC version: GIAC 2.1
+  writes `ln(v+sqrt(v+1)*sqrt(v-1))`, GIAC 2.0 `ln(v+sqrt(v^2-1))`.
+
 ### Added
 
 - **`GiacBlockArraysExt`: block matrices of expressions with BlockArrays.jl**,
