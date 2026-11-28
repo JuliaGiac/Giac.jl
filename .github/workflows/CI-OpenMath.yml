@@ -48,7 +48,7 @@ jobs:
             rev = only(m.captures[1] for m in eachmatch(r"OPENMATH_REV = \"([0-9a-f]+)\"", read("test/run_openmath_tests.jl", String)))
             Pkg.develop(PackageSpec(path = pwd()))
             Pkg.add(PackageSpec(url = "https://github.com/s-celles/OpenMath.jl", rev = rev))
-            Pkg.add(["Symbolics", "SHA", "Downloads", "Test"])
+            Pkg.add(["Symbolics", "SHA", "Downloads", "Test", "JSON"])
             Pkg.instantiate()
             Pkg.status()'
       - name: Assert the extension is loaded
