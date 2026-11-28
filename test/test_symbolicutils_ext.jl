@@ -31,7 +31,9 @@ const SU = SymbolicUtils
             @test isequal(g(f), f(x))
         end
         @test isequal(g(asinh), log(sqrt(1 + x^2) + x))
-        @test isequal(g(acosh), log(sqrt(-1 + x^2) + x))
+        # GIAC 2.1 writes acosh with two square roots, right off the real axis too
+        @test isequal(g(acosh), Giac.giac_version() >= v"2.1" ? log(x + sqrt(1 + x) * sqrt(-1 + x)) :
+                                                                  log(sqrt(-1 + x^2) + x))
         @test isequal(g(atanh), (1 // 2) * log((1 + x) / (1 - x)))
         @test isequal(g(ceil), -floor(-x))
     end
