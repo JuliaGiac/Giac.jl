@@ -16,6 +16,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `evaluate_with_diagnostics`, the value in the extension's own type.
 - `upstream-bugs.md`: bugs in packages Giac.jl depends on (first entry:
   LibPARI 0.18's `Gen` finalizer switching tasks, fixed in LibPARI 0.19).
+- **GiacOpenMathExt: Giac ↔ OpenMath** (with OpenMath.jl loaded, not
+  registered yet). `OpenMath.to_openmath(g::GiacExpr)` and
+  `Giac.from_openmath(o)` (evaluated by GIAC; `Giac.giac_source(o)` gives the
+  input, not evaluated) follow the giac-openmath table
+  (https://github.com/JuliaGiac/giac-openmath), embedded at a commit and
+  checked by SHA-256 (`test/update_openmath_table.jl` updates it). What the
+  table refuses or does not list is an `OpenMath.OpenMathConversionError`
+  with the table's reason; an OpenMath variable named like a GIAC constant or
+  command is refused too. `evaluate_with_diagnostics(() -> Giac.from_openmath(o))`
+  gives the value and GIAC's messages. Tested on its own CI job
+  (`CI-OpenMath.yml`, `test/run_openmath_tests.jl`), including against
+  OpenMath.jl's Symbolics phrasebook: an expression written to OpenMath by
+  OpenMath.jl from Symbolics and read by this one gives what Giac.jl's
+  Symbolics bridge gives, and the other way round.
 
 - **`GiacBlockArraysExt`: block matrices of expressions with BlockArrays.jl**,
   ported from Kahli Burke's `ergonomics` branch. Products of conforming block
