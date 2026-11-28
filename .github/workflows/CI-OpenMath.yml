@@ -1,0 +1,71 @@
+name: CI (OpenMath bridge)
+
+# The OpenMath.jl bridge (GiacOpenMathExt) gets its own job: OpenMath.jl is not
+# registered, so it cannot be in the `test` target, whose resolution would then
+# fail on every cell of the main matrix. This job builds a project with Giac,
+# OpenMath.jl at the commit test/run_openmath_tests.jl names, Symbolics, SHA and
+# Downloads, runs the bridge's tests standalone, and owns the bridge's coverage.
+
+on:
+  push:
+    branches:
+      - main
+      - 'release-*'
+    tags:
+      - 'v*'
+  pull_request:
+    branches:
+      - main
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ startsWith(github.ref, 'refs/pull/') }}
+
+jobs:
+  openmath-bridge:
+    name: OpenMath bridge - Julia ${{ matrix.version }} - ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        version:
+          - '1.10'  # LTS
+          - '1'     # Latest stable
+        os:
+          - ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: julia-actions/setup-julia@v3
+        with:
+          version: ${{ matrix.version }}
+          arch: x64
+      - uses: julia-actions/cache@v3
+      - name: Build a project holding Giac and OpenMath.jl
+        run: |
+          mkdir -p openmath-env
+          julia --project=openmath-env -e '
+            using Pkg
+            rev = only(m.captures[1] for m in eachmatch(r"OPENMATH_REV = \"([0-9a-f]+)\"", read("test/run_openmath_tests.jl", String)))
+            Pkg.develop(PackageSpec(path = pwd()))
+            Pkg.add(PackageSpec(url = "https://github.com/s-celles/OpenMath.jl", rev = rev))
+            Pkg.add(["Symbolics", "SHA", "Downloads", "Test"])
+            Pkg.instantiate()
+            Pkg.status()'
+      - name: Assert the extension is loaded
+        run: |
+          julia --project=openmath-env -e '
+            using Giac, OpenMath
+            ext = Base.get_extension(Giac, :GiacOpenMathExt)
+            ext === nothing && error("GiacOpenMathExt did not load")
+            @info "GiacOpenMathExt loaded" ext'
+      - name: Run the bridge tests standalone
+        run: |
+          julia --project=openmath-env --code-coverage=user test/test_openmath_ext.jl
+      # OpenMath.jl is not in the `test` target, so without this the
+      # extension's lines would be reported as entirely unhit.
+      - uses: julia-actions/julia-processcoverage@v1
+      - uses: codecov/codecov-action@v7
+        with:
+          files: lcov.info
+          token: ${{ secrets.CODECOV_TOKEN }}
+          fail_ci_if_error: false

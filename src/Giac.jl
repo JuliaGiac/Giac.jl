@@ -228,11 +228,24 @@ function to_symbolicutils end
 
 """
     Giac.giac_source(t; names = Dict(), exact = true) -> String
+    Giac.giac_source(o::OpenMath.OMNode) -> String
 
-The Giac source text of a SymbolicUtils expression, unevaluated. Extended by
-GiacSymbolicUtilsExt; see its method for the details.
+The Giac source text of a SymbolicUtils expression or of an OpenMath object,
+unevaluated. Extended by GiacSymbolicUtilsExt and GiacOpenMathExt; see their
+methods for the details.
 """
 function giac_source end
+
+"""
+    Giac.from_openmath(o::OpenMath.OMNode) -> GiacExpr
+
+The GIAC expression of an OpenMath object, evaluated by GIAC. The other way is
+`OpenMath.to_openmath(g::GiacExpr)`. Both follow the giac-openmath table
+(https://github.com/JuliaGiac/giac-openmath) and refuse, with an
+`OpenMath.OpenMathConversionError`, what it does not map. Extended by
+GiacOpenMathExt (load OpenMath.jl).
+"""
+function from_openmath end
 
 """
     to_mathjson(expr::GiacExpr)
