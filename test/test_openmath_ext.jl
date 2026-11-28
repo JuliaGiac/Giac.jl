@@ -44,7 +44,7 @@ end
     @test ext !== nothing
 
     @testset "the embedded table is giac-openmath's, at its commit" begin
-        @test ext.TABLE["format"] == 1
+        @test ext.TABLE["format"] == 2
         @test length(ext.TABLE_COMMIT) == 40
         @test bytes2hex(sha256(ext.TABLE_TOML)) == ext.TABLE_SHA256
         # the same bytes as the file in JuliaGiac/giac-openmath at that commit
@@ -221,4 +221,6 @@ end
             @test same(Giac.to_giac(Symbolics.Num(s)), g)
         end
     end
+
+    include(joinpath(@__DIR__, "test_openmath_format2.jl"))
 end

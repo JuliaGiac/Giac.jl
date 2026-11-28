@@ -14,6 +14,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   SymbolicUtils and MathJSON (`test/test_diagnostics_extensions.jl`): the
   conversion, the computation and the conversion back inside
   `evaluate_with_diagnostics`, the value in the extension's own type.
+- **GiacOpenMathExt on the giac-openmath table's format 2** (at ece952e).
+  Only official Content Dictionaries are used by default, both ways; the
+  others are used when listed in `enable` (`to_openmath(g; enable)`,
+  `Giac.giac_source(o; enable, exact)`, `Giac.from_openmath(o; enable, exact)`).
+  `sign` ↔ `giac_math1.sign`, at JuliaGiac's base. Each symbol must be at its
+  CD's base, inherited from the enclosing object (an `OMObject`'s included).
+  Request symbols are refused outside `scscp1.procedure_call`, and requests
+  are not evaluated yet. A bound variable named as a GIAC constant is renamed
+  (`i` in a sum becomes `i_1`). The tests read giac-openmath's shared corpus,
+  embedded in `test/giac_openmath_corpus.jl`.
 - `upstream-bugs.md`: bugs in packages Giac.jl depends on (first entry:
   LibPARI 0.18's `Gen` finalizer switching tasks, fixed in LibPARI 0.19).
 - **GiacOpenMathExt: Giac ↔ OpenMath** (with OpenMath.jl loaded, not
