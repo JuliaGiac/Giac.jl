@@ -50,9 +50,9 @@ r.diagnostics   # :assumption, "integration of abs or sign assumes constant sign
 
 The table decides, not this extension: it holds every GIAC node the
 conversion knows, the OpenMath symbols they mean, and the GIAC input to write
-from OpenMath. Its first version covers arith1, transc1, relation1, logic1,
-nums1, rounding1, minmax1, complex1, integer1, calculus1 and limit1. A few
-points worth knowing:
+from OpenMath. It covers arith1, transc1, relation1, logic1, nums1,
+rounding1, minmax1, complex1, integer1, calculus1 and limit1, and `sign` in
+JuliaGiac's private `giac_math1`. A few points worth knowing:
 
 | GIAC | OpenMath |
 |---|---|
@@ -68,7 +68,7 @@ points worth knowing:
 
 The table is embedded in the extension (`ext/giac_openmath_table.jl`, at a
 commit of giac-openmath, checked by SHA-256); `test/update_openmath_table.jl`
-updates it.
+updates it, with the shared corpus.
 
 ## Refusals
 
@@ -83,9 +83,48 @@ rather than a guess:
 - lists, strings, programs, and any command without a Content Dictionary
   symbol (`gbasis`, `desolve`…).
 
-From OpenMath, a variable named like a GIAC constant or command (`e`, `pi`,
-`sin`…) is refused too, since GIAC would read it as that constant or
+From OpenMath, a free variable named like a GIAC constant or command (`e`,
+`pi`, `sin`…) is refused too, since GIAC would read it as that constant or
 command; so is an antiderivative applied at another variable than its own.
+A *bound* variable named like a constant is renamed instead (see below).
+
+## Content Dictionaries, bases and requests
+
+The table (format 2) gives each Content Dictionary its status. By default
+only the `official` ones are used, both ways. The others are used only when
+listed in `enable`:
+
+| CD | Status | What |
+|---|---|---|
+| `giac_math1` | private | `sign` |
+| `scscp1` | experimental | the envelope of requests |
+| `prog1` | experimental | assignment, a request |
+| `giac_procedures1` | private | requests to GIAC: simplify, factor, solve… |
+
+```julia
+PB = "https://juliagiac.github.io/giac-openmath/cd"    # JuliaGiac's CDs
+s = OMSymbol("giac_math1", "sign"; cdbase = PB)(OMVariable("x"))
+Giac.giac_source(s)                            # OpenMathConversionError: giac_math1 is a private CD
+Giac.giac_source(s; enable = ["giac_math1"])   # "sign(x)"
+to_openmath(giac_eval("sign(x)"); enable = ["giac_math1"])   # giac_math1#sign at PB
+```
+
+- **Bases.** A symbol's base is its own `cdbase`, or the nearest enclosing
+  object's, or OpenMath's. It must be its CD's base in the table: JuliaGiac's
+  CDs are at `https://juliagiac.github.io/giac-openmath/cd`, and a
+  `giac_math1` at another base is another dictionary, refused.
+- **Requests.** A `giac_procedures1` or `prog1` symbol is valid only as the
+  head of the argument of `scscp1.procedure_call`. Requests are not evaluated
+  yet: `scscp1.procedure_call` is refused, even when enabled.
+- **Bound variables named as constants are renamed** (alpha-conversion): the
+  sum over `i` of `i^2` is written `sum(i_1^2, i_1, 1, n)`, the fresh name
+  being the first of `i_1`, `i_2`… that the object does not use.
+- **`exact = true`** refuses floats.
+
+The rules are giac-openmath's (`docs/private-cds.md`, `docs/fixtures.md`).
+The tests read its shared corpus (`test/giac_openmath_corpus.jl`, embedded at
+the table's commit) and check every value and refusal. Giac.jl's errors carry
+no JSON path, so the reason and the symbol are compared.
 
 An entry says that a GIAC node and an OpenMath symbol name the same operation
 with the same arguments; that their domains and branch cuts agree has not been

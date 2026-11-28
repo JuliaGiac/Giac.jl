@@ -16,5 +16,5 @@ const OPENMATH_REV = "ae4f3608e330221ed8af1ee8b24d98539de4d09d"
 Pkg.activate(; temp = true)
 Pkg.develop(PackageSpec(path = dirname(@__DIR__)))
 Pkg.add(PackageSpec(url = OPENMATH_URL, rev = OPENMATH_REV))
-Pkg.add(["Symbolics", "SHA", "Downloads", "Test"])
+Pkg.add(["Symbolics", "SHA", "Downloads", "Test", "JSON"])
 include(joinpath(@__DIR__, "test_openmath_ext.jl"))

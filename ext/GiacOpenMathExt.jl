@@ -59,6 +59,29 @@ _key(o::OMApplication) = o.applicant isa OMSymbol ? _key(o.applicant) :
 _key(o::OMBinding) = o.binder isa OMSymbol ? "bind:" * _key(o.binder) : ""
 _key(::OMNode) = ""
 
+# format 2: each CD's status and base, and the CDs whose symbols are requests
+const STANDARD_CDBASE = "http://www.openmath.org/cd"
+_cd_entry(cd) = get(TABLE["cd"], cd, nothing)
+_status(cd) = (e = _cd_entry(cd); e === nothing ? nothing : e["status"])
+_base_of(cd) = (e = _cd_entry(cd); e === nothing ? STANDARD_CDBASE : get(e, "cdbase", STANDARD_CDBASE))
+_needs_enabling(cd) = _status(cd) in ("experimental", "private")
+const PROCEDURE_CDS = Set{String}(TABLE["envelope"]["procedure_cds"])
+const CALL = String(TABLE["envelope"]["call"])
+
+# the CDs a caller enables, checked against the table
+function _enabled(enable)
+    en = Set{String}(String.(collect(enable)))
+    for cd in en
+        haskey(TABLE["cd"], cd) || throw(ArgumentError("enable: `$cd` is not a Content Dictionary of the table"))
+    end
+    return en
+end
+
+function _not_enabled(cd, s)
+    what = _status(cd) == "private" ? "a private" : "an experimental"
+    _refuse("$cd is $what Content Dictionary: $s is used only when the caller enables it (enable = [\"$cd\"])")
+end
+
 const FROM_MAPS = let d = Dict{String, Vector{Any}}()
     for m in TABLE["map"]
         _from(m) && push!(get!(d, _key(m["om"]), Any[]), m)
@@ -72,8 +95,15 @@ end
 
 function _symbol(s::AbstractString)
     cd, name = split(s, '.'; limit = 2)
-    return OMSymbol(String(cd), String(name))
+    base = _base_of(cd)
+    return OMSymbol(String(cd), String(name); cdbase = base == STANDARD_CDBASE ? nothing : base)
 end
+
+# the symbols of a result: those of CDs that need enabling only when enabled
+_check_out(o::OMSymbol, en) = (_needs_enabling(o.cd) && !(o.cd in en) && _not_enabled(o.cd, _key(o)); nothing)
+_check_out(o::OMApplication, en) = (_check_out(o.applicant, en); foreach(a -> _check_out(a, en), o.arguments))
+_check_out(o::OMBinding, en) = (_check_out(o.binder, en); _check_out(o.body, en))
+_check_out(::Any, en) = nothing
 
 function _leaf(g::GiacExpr)
     T = Giac.GenTypes
@@ -155,15 +185,27 @@ function _openmath(g::GiacExpr)
     _refuse("no OpenMath symbol for the GIAC node `$node` with $(length(args)) argument(s) in $(_where())")
 end
 
-OpenMath.to_openmath(g::GiacExpr) = GC.@preserve g _openmath(g)
+"""
+    OpenMath.to_openmath(g::GiacExpr; enable = ()) -> OMNode
+
+The OpenMath object of `g`, in the table's official Content Dictionaries. The
+others (`giac_math1`…) are used only when listed in `enable`; JuliaGiac's own
+CDs carry their base, `https://juliagiac.github.io/giac-openmath/cd`.
+"""
+function OpenMath.to_openmath(g::GiacExpr; enable = ())
+    en = _enabled(enable)
+    o = GC.@preserve g _openmath(g)
+    _check_out(o, en)
+    return o
+end
 
 # ---------------------------------------------------------------------------------
 # OpenMath → GIAC input
 # ---------------------------------------------------------------------------------
 
-const _STANDARD_CDBASE = (nothing, "http://www.openmath.org/cd")
-
-_is(o::OMSymbol, s::AbstractString) = o.cdbase in _STANDARD_CDBASE && _key(o) == s
+# a symbol at its CD's base (_prepare gives every symbol its base)
+_at_base(o::OMSymbol) = something(o.cdbase, STANDARD_CDBASE) == _base_of(o.cd)
+_is(o::OMSymbol, s::AbstractString) = _at_base(o) && _key(o) == s
 _is(::Any, ::AbstractString) = false
 
 # bind env[p] = o, or check it is what it already is
@@ -240,7 +282,7 @@ end
 
 function _source(o::OMSymbol)
     s = _key(o)
-    o.cdbase in _STANDARD_CDBASE || _refuse("no GIAC form for the symbol $s of the CD base $(o.cdbase)")
+    _at_base(o) || _refuse("no GIAC form for the symbol $s of the CD base $(o.cdbase)")
     haskey(FROM_LEAF, s) && return FROM_LEAF[s]
     haskey(REFUSED_OM, s) && _refuse("$s is not mapped to GIAC: $(REFUSED_OM[s])")
     _refuse("no GIAC form for the OpenMath symbol $s in $(_where())")
@@ -259,6 +301,10 @@ function _source(o::Union{OMApplication, OMBinding})
         env = Dict{String, Any}()
         _match_om(m["om"], o, env) && return _write(m, env)
     end
+    # a free variable named as a constant, where a bound one was renamed
+    # (diff(i -> i^2) applied to i): refuse that variable, not the shape
+    v = _first_reserved(o)
+    v === nothing || _source(v)
     head = replace(key, r"^(apply|bind):" => "")
     haskey(REFUSED_OM, head) && _refuse("$head is not mapped to GIAC: $(REFUSED_OM[head])")
     isempty(head) && _refuse("no GIAC form for this OpenMath $(nameof(typeof(o))) in $(_where())")
@@ -267,14 +313,133 @@ end
 
 _source(o::OMNode) = _refuse("no GIAC form for an OpenMath $(nameof(typeof(o)))")
 
-Giac.giac_source(o::OMNode) = _source(o)
+# ---------------------------------------------------------------------------------
+# Reading rules of format 2, before any GIAC input is written
+# ---------------------------------------------------------------------------------
+
+# the first symbol, in document order, of a CD not enabled, at another base, or a
+# request out of place; and floats, when exact
+function _check(o::OMSymbol, c, head = false)
+    s = _key(o)
+    _needs_enabling(o.cd) && !(o.cd in c.enable) && _not_enabled(o.cd, s)
+    _at_base(o) || _refuse("no GIAC form for the symbol $s of the CD base $(o.cdbase): $(o.cd) is at $(_base_of(o.cd))")
+    o.cd in PROCEDURE_CDS && !head &&
+        _refuse("$s is a request to GIAC: valid only as the head of the argument of $CALL")
+    return nothing
+end
+function _check(o::OMApplication, c, head = false)
+    _check(o.applicant, c)
+    call = o.applicant isa OMSymbol && _key(o.applicant) == CALL
+    for (i, a) in enumerate(o.arguments)
+        if call && i == 1 && a isa OMApplication
+            _check(a.applicant, c, true)
+            foreach(x -> _check(x, c), a.arguments)
+        else
+            _check(a, c)
+        end
+    end
+    call && _refuse("GiacOpenMathExt does not evaluate requests ($CALL) yet")
+    return nothing
+end
+function _check(o::OMBinding, c, head = false)
+    _check(o.binder, c)
+    for v in o.variables, p in v.attributes
+        _check(p.key, c); _check(p.value, c)
+    end
+    _check(o.body, c)
+end
+function _check(o::OMAttribution, c, head = false)
+    for p in o.attributes
+        _check(p.key, c); _check(p.value, c)
+    end
+    _check(o.object, c)
+end
+_check(o::OMFloat, c, head = false) = c.exact ? _refuse("a float, refused in exact mode") : nothing
+_check(::Any, c, head = false) = nothing
+
+# every variable name of an object
+_names!(s, o::OMVariable) = push!(s, o.name)
+_names!(s, o::OMApplication) = (_names!(s, o.applicant); foreach(a -> _names!(s, a), o.arguments); s)
+_names!(s, o::OMBinding) = (foreach(v -> push!(s, v.name), o.variables); _names!(s, o.binder); _names!(s, o.body))
+_names!(s, ::Any) = s
+
+# bound variables named as GIAC constants renamed to fresh names, the name
+# followed by _1, _2…, the first no variable of the object uses (alpha-conversion)
+_rename(o::OMVariable, sub, fresh) = haskey(sub, o.name) ? OMVariable(sub[o.name]) : o
+_rename(o::OMApplication, sub, fresh) =
+    OMApplication(_rename(o.applicant, sub, fresh), [_rename(a, sub, fresh) for a in o.arguments])
+function _rename(o::OMBinding, sub, fresh)
+    inner = copy(sub)
+    vars = map(o.variables) do v
+        if v.name in Giac._RESERVED_NAMES
+            n = fresh(v.name)
+            inner[v.name] = n
+            OMBoundVariable(n, v.attributes)
+        else
+            delete!(inner, v.name)            # a bound name shadows an outer renaming
+            v
+        end
+    end
+    return OMBinding(_rename(o.binder, sub, fresh), vars, _rename(o.body, inner, fresh))
+end
+_rename(o, sub, fresh) = o
+
+function _rename(o)
+    used = _names!(Set{String}(), o)
+    fresh = function (n)
+        k = 1
+        while "$(n)_$k" in used
+            k += 1
+        end
+        push!(used, "$(n)_$k")
+        return "$(n)_$k"
+    end
+    return _rename(o, Dict{String, String}(), fresh)
+end
+
+# the first variable named as a GIAC constant: after _rename, a free one
+_first_reserved(o::OMVariable) = o.name in Giac._RESERVED_NAMES ? o : nothing
+function _first_reserved(o::OMApplication)
+    for x in (o.applicant, o.arguments...)
+        r = _first_reserved(x)
+        r === nothing || return r
+    end
+    return nothing
+end
+_first_reserved(o::OMBinding) = something(_first_reserved(o.binder), _first_reserved(o.body), Some(nothing))
+_first_reserved(::Any) = nothing
+
+# the object _source reads: bases explicit, the rules checked, bound names renamed
+function _prepare(o::OMObject, enable, exact)
+    base = o.cdbase === nothing ? STANDARD_CDBASE : o.cdbase
+    return _prepare(resolve_cdbase(o.object; base), enable, exact; resolved = true)
+end
+function _prepare(o::OMNode, enable, exact; resolved = false)
+    r = resolved ? o : resolve_cdbase(o)
+    _check(r, (; enable = _enabled(enable), exact = Bool(exact)))
+    return _rename(r)
+end
 
 """
-    Giac.from_openmath(o::OpenMath.OMNode) -> GiacExpr
+    Giac.giac_source(o::OpenMath.OMNode; enable = (), exact = false) -> String
+
+The GIAC input of the OpenMath object `o`, not evaluated. Only the table's
+official Content Dictionaries are read, unless `enable` lists others
+(`giac_math1`, `scscp1`, `prog1`, `giac_procedures1`); each symbol must be at
+its CD's base, its own `cdbase` or the nearest enclosing object's. Request
+symbols are refused outside `scscp1.procedure_call`, and requests are not
+evaluated yet. `exact = true` refuses floats.
+"""
+Giac.giac_source(o::Union{OMNode, OMObject}; enable = (), exact = false) = _source(_prepare(o, enable, exact))
+
+"""
+    Giac.from_openmath(o::OpenMath.OMNode; enable = (), exact = false) -> GiacExpr
 
 The GIAC expression of the OpenMath object `o`, evaluated by GIAC (so an
-integral is computed); `Giac.giac_source(o)` is the GIAC input, not evaluated.
+integral is computed); `Giac.giac_source(o)` is the GIAC input, not evaluated,
+and says which objects are read.
 """
-Giac.from_openmath(o::OMNode) = giac_eval(_source(o))
+Giac.from_openmath(o::Union{OMNode, OMObject}; enable = (), exact = false) =
+    giac_eval(Giac.giac_source(o; enable, exact))
 
 end # module
