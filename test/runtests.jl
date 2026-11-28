@@ -244,6 +244,8 @@ using LinearAlgebra
     # Diagnostics capture: GIAC log messages returned apart from the value
     # ============================================================================
     include("test_diagnostics.jl")
+    # The value and the messages through the extensions (Symbolics, SymbolicUtils, MathJSON)
+    include("test_diagnostics_extensions.jl")
 
     # ============================================================================
     # Doctests
