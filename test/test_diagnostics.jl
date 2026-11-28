@@ -136,6 +136,17 @@ const SERRET_HINT = "0.272198261288"
     end
     Giac._DIAGNOSTICS_BACKEND[] = :auto
 
+    @testset "a log that is not valid UTF-8" begin
+        # GIAC can write bytes that are not UTF-8 in its log (a syntax error quotes its
+        # buffer): they are read as Latin-1, so the messages can be searched
+        bad = String(UInt8[0x61, 0x74, 0x20, 0xc8, 0x0a])        # "at \xc8\n"
+        ds = Giac._parse_diagnostics(bad)
+        @test length(ds) == 1 && isvalid(ds[1].text) && ds[1].text == "at È"
+        out = evaluate_with_diagnostics(() -> giac_eval("invalid_syntax(("))
+        @test isvalid(out.log)
+        @test all(d -> isvalid(d.text) && isvalid(d.raw), out.diagnostics)
+    end
+
     @testset "the backend follows the wrapper" begin
         @test Giac._diagnostics_backend() === (Giac._log_capture_available() ? :wrapper : :stderr)
     end

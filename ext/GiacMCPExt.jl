@@ -5,7 +5,7 @@
 module GiacMCPExt
 
 using Giac
-using Giac: giac_eval, search_commands, GiacContext
+using Giac: giac_eval, search_commands, GiacContext, evaluate_with_diagnostics
 using ModelContextProtocol
 
 # ============================================================================
@@ -38,6 +38,9 @@ Domains and example expressions:
 Multiple statements can be separated by semicolons; the result is the value of the last one.
 Variables are symbolic by default.
 Each call is independent — variable bindings (a := 5) do NOT persist across calls.
+When Giac says something while computing (an assumption it made, a branch it chose, a check
+it skipped, input it repaired), the result comes first and a second block "GIAC messages:"
+lists what it said: the result holds only under those messages.
 """
 
 const _SEARCH_DESCRIPTION = """
@@ -56,6 +59,20 @@ Examples:
 # Tool factories
 # ============================================================================
 
+# An error result. ModelContextProtocol 0.7 names the flag `is_error`, earlier versions
+# `isError`; the compat admits both, and the wrong keyword is a MethodError instead of an
+# answer to the client.
+function _error_result(content)
+    :is_error in fieldnames(CallToolResult) && return CallToolResult(; content, is_error = true)
+    return CallToolResult(; content, isError = true)
+end
+
+# GIAC's messages as one text block for the client, or nothing when it said nothing
+function _messages_text(diagnostics)
+    isempty(diagnostics) && return nothing
+    return "GIAC messages:\n" * join(("- " * d.text for d in diagnostics), "\n")
+end
+
 function _make_eval_tool()
     return MCPTool(
         name = "giac_eval",
@@ -69,19 +86,31 @@ function _make_eval_tool()
             ),
         ],
         handler = function (params)
-            try
-                # A fresh context per call, which is what makes the "each call is
-        # independent" line above true rather than aspirational: a binding
-        # from one call cannot reach the next, and none of them reach the
-        # default context the rest of the session uses.
-        result = giac_eval(params["expr"], GiacContext())
-                return TextContent(text = string(result))
-            catch e
-                return CallToolResult(
-                    isError = true,
-                    content = Content[TextContent(text = "Error: " * sprint(showerror, e))],
-                )
+            # A fresh context per call, which is what makes the "each call is
+            # independent" line above true rather than aspirational: a binding
+            # from one call cannot reach the next, and none of them reach the
+            # default context the rest of the session uses.
+            ctx = GiacContext()
+            # GIAC's messages (how it computed, what it assumed, input it repaired)
+            # go to the client with the result: the error is caught inside the
+            # capture, so that they are not lost with it either.
+            out = evaluate_with_diagnostics(; context = ctx) do
+                try
+                    (giac_eval(params["expr"], ctx), nothing)
+                catch e
+                    (nothing, e)
+                end
             end
+            result, err = out.value
+            messages = _messages_text(out.diagnostics)
+            if err !== nothing
+                content = Content[TextContent(text = "Error: " * sprint(showerror, err))]
+                messages === nothing || push!(content, TextContent(text = messages))
+                return _error_result(content)
+            end
+            messages === nothing && return TextContent(text = string(result))
+            return CallToolResult(content = Content[TextContent(text = string(result)),
+                                                    TextContent(text = messages)])
         end,
     )
 end
@@ -115,10 +144,7 @@ function _make_search_tool()
                 end
                 return TextContent(text = join(string.(results), ", "))
             catch e
-                return CallToolResult(
-                    isError = true,
-                    content = Content[TextContent(text = "Error: " * sprint(showerror, e))],
-                )
+                return _error_result(Content[TextContent(text = "Error: " * sprint(showerror, e))])
             end
         end,
     )

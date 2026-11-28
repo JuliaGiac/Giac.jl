@@ -121,8 +121,13 @@ function _diagnostic_level(text::AbstractString)::DiagnosticLevel.T
     return DiagnosticLevel.INFO
 end
 
+# GIAC can write bytes that are not UTF-8 in its log (a syntax error quotes its input
+# buffer): read them as Latin-1, as for help texts, so the messages can be searched.
+_valid_log(log::AbstractString)::String = isvalid(log) ? String(log) : _latin1_fallback(String(log))
+
 # Split a captured log into one GiacDiagnostic per non-empty line.
 function _parse_diagnostics(log::AbstractString)::Vector{GiacDiagnostic}
+    log = _valid_log(log)
     diagnostics = GiacDiagnostic[]
     for line in split(log, '\n')
         raw = rstrip(line)
@@ -223,7 +228,7 @@ function _capture_with_wrapper(f, context::GiacContext)
             end
             log = shared_log * ctx_log
         end
-        GiacEvalResult(value, _parse_diagnostics(log), log)
+        GiacEvalResult(value, _parse_diagnostics(log), _valid_log(log))
     end
 end
 
@@ -252,7 +257,7 @@ function _capture_with_stderr(f)
             start = filesize(path)
             value = f()
             log = _captured_since(path, start)
-            return GiacEvalResult(value, _parse_diagnostics(log), log)
+            return GiacEvalResult(value, _parse_diagnostics(log), _valid_log(log))
         end
         mktemp() do file_path, file
             _STDERR_CAPTURE[] = file_path
@@ -262,7 +267,7 @@ function _capture_with_stderr(f)
                 end
                 flush(file)                     # what Julia itself wrote to stderr
                 log = _captured_since(file_path, 0)
-                GiacEvalResult(value, _parse_diagnostics(log), log)
+                GiacEvalResult(value, _parse_diagnostics(log), _valid_log(log))
             finally
                 _STDERR_CAPTURE[] = nothing
             end

@@ -9,6 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **The value and GIAC's messages through every extension**, documented in
+  `diagnostics.md` ("Through the extensions") and tested for Symbolics,
+  SymbolicUtils and MathJSON (`test/test_diagnostics_extensions.jl`): the
+  conversion, the computation and the conversion back inside
+  `evaluate_with_diagnostics`, the value in the extension's own type.
+- `upstream-bugs.md`: bugs in packages Giac.jl depends on (first entry:
+  LibPARI 0.18's `Gen` finalizer switching tasks, fixed in LibPARI 0.19).
+
 - **`GiacBlockArraysExt`: block matrices of expressions with BlockArrays.jl**,
   ported from Kahli Burke's `ergonomics` branch. Products of conforming block
   matrices of `GiacExpr` work and stay partitioned (the extension gives
@@ -424,6 +432,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   been fixed upstream and the document needs updating.
 
 ### Fixed
+
+- **The MCP server returns GIAC's messages with the result.** The
+  `giac_eval` tool answered with the value only, so a client never saw what
+  GIAC assumed, chose or repaired. When GIAC says something, the result now
+  comes first and a block `GIAC messages:` follows; an error keeps them too.
+  The tool description tells the client so.
+- **The MCP server's error results work with ModelContextProtocol 0.7**,
+  which names the flag `is_error`: the `isError` keyword of earlier versions
+  was a `MethodError` instead of an answer to the client.
+- **`evaluate_with_diagnostics` no longer fails on a log that is not UTF-8**:
+  GIAC can write such bytes (a syntax error quoted freed memory, fixed in the
+  JuliaGiac fork; some builds write Latin-1). They are read as Latin-1, so
+  `log`, `text` and `raw` are always valid strings.
 
 - **`to_symbolicutils` maps Giac's `ln` to `log`**: `integrate(1/v, v)`,
   `ln(abs(v))`, came back as an `ArgumentError` in exact mode ("no exact

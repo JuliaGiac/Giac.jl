@@ -9,6 +9,9 @@ function _find_tool(server, tool_name::AbstractString)
     return server.tools[idx]
 end
 
+# the error flag of a tool result: `is_error` in ModelContextProtocol 0.7, `isError` before
+_is_error(r) = hasproperty(r, :is_error) ? r.is_error == true : r.isError == true
+
 @testset "GiacMCPExt" begin
 
     # ------------------------------------------------------------------
@@ -82,8 +85,45 @@ end
             threw = true
         end
         @test !threw
+        # the value alone, the value with GIAC's messages, or an error: never an exception
         @test (isa(result, TextContent) && !isempty(result.text)) ||
-              (isa(result, CallToolResult) && result.isError == true && !isempty(result.content))
+              (isa(result, CallToolResult) && !isempty(result.content))
+    end
+
+    # ------------------------------------------------------------------
+    # 4b. Eval handler — GIAC's messages reach the client with the result
+    # ------------------------------------------------------------------
+    @testset "Eval handler — the result and GIAC's messages" begin
+        server = giac_mcp_server()
+        eval_tool = _find_tool(server, "giac_eval")
+        # ModelContextProtocol 0.7 keeps a result's content as dictionaries
+        text(c) = c isa AbstractDict ? string(get(c, "text", get(c, :text, ""))) : c.text
+        texts(r) = r isa TextContent ? [r.text] : [text(c) for c in r.content]
+
+        # without messages, the result alone, as before
+        @test eval_tool.handler(Dict("expr" => "2+3")) isa TextContent
+
+        # GIAC assumes something to integrate abs: the client must see it
+        result = eval_tool.handler(Dict("expr" => "integrate(abs(x),x)"))
+        @test result isa CallToolResult
+        @test !_is_error(result)
+        t = texts(result)
+        @test length(t) == 2
+        @test occursin("sign(x)", t[1])                       # the value first
+        @test startswith(t[2], "GIAC messages:")
+        @test occursin("assumes constant sign", t[2])
+        @test occursin("Check [abs(x)]", t[2])
+
+        # an error keeps the messages too, and is flagged as an error (with either name the
+        # installed ModelContextProtocol gives the flag)
+        result = eval_tool.handler(Dict("expr" => "inv([[1,2],[2,4]])"))
+        @test result isa CallToolResult
+        @test _is_error(result)
+        @test any(x -> occursin("Not invertible", x), texts(result))
+
+        # what GIAC said about input it repaired comes with the result too
+        t = texts(eval_tool.handler(Dict("expr" => "sqrt(")))
+        @test any(x -> occursin("Warning adding 1 ) at end of input", x), t)
     end
 
     # ------------------------------------------------------------------
